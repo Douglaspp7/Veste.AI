@@ -30,7 +30,6 @@ export default function App() {
   const [passwordInput, setPasswordInput] = useState('');
   const [loginError, setLoginError] = useState(false);
 
-  // Inicia com o ecrã totalmente limpo (sem anúncios de exemplo)
   const [ads, setAds] = useState([]);
   const [isMining, setIsMining] = useState(false);
   const [miningKeyword, setMiningKeyword] = useState('');
@@ -38,7 +37,7 @@ export default function App() {
   const [systemLogs, setSystemLogs] = useState([]);
   const [showSettings, setShowSettings] = useState(false);
   const [apifyToken, setApifyToken] = useState('');
-  const [actorId, setActorId] = useState('apify/facebook-ads-scraper');
+  const [actorId, setActorId] = useState('3853UUZQG6pjjdw11'); // Atualizado para o novo robô por defeito
 
   const [selectedAd, setSelectedAd] = useState(null);
 
@@ -82,15 +81,29 @@ export default function App() {
     
     try {
       let payload = {};
+      const keywordEncoded = encodeURIComponent(miningKeyword.trim());
       
+      // Lógica de Adaptação Automática de Payload consoante o Actor escolhido
       if (safeActorId.includes('dz_omar')) {
         payload = {
           searchTerms: [miningKeyword.trim()],
           countries: "BR",
           activeStatus: "ACTIVE" 
         };
+      } else if (safeActorId.includes('3853UUZQG6pjjdw11') || safeActorId.includes('memo23')) {
+        // Formato específico para o actor "memo23 / Richest output"
+        payload = {
+          startUrls: [
+            { url: `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=BR&q=${keywordEncoded}&search_type=keyword_exact_phrase` }
+          ],
+          proxyConfiguration: {
+            useApifyProxy: true,
+            apifyProxyGroups: ["RESIDENTIAL"] // Tenta forçar proxy residencial para evitar bloqueios
+          },
+          maxItems: 30 // Limite de segurança
+        };
       } else {
-        const keywordEncoded = encodeURIComponent(miningKeyword.trim());
+        // Formato Exigido pelo Robô Oficial da Apify "apify/facebook-ads-scraper"
         payload = {
           startUrls: [
             { url: `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=BR&q=${keywordEncoded}` }
@@ -98,6 +111,8 @@ export default function App() {
           resultsLimit: 20
         };
       }
+
+      addLog(`Robô detetado: enviando pacote de dados compatível...`);
 
       const runResponse = await fetch(`https://api.apify.com/v2/acts/${safeActorId}/runs?token=${token}`, {
         method: 'POST',
@@ -107,7 +122,7 @@ export default function App() {
 
       if (!runResponse.ok) {
          if (runResponse.status === 403) {
-             throw new Error("Erro 403: Acesso Proibido. O seu token não tem permissão para usar este actor.");
+             throw new Error("Erro 403: Acesso Proibido. O seu token não tem permissão. Vá ao site da Apify e certifique-se de que adicionou/subscreveu este Actor à sua conta.");
          }
          const err = await runResponse.json();
          throw new Error(`Erro ${runResponse.status}: ${err.error?.message || "Token inválido ou acesso negado."}`);
@@ -151,17 +166,15 @@ export default function App() {
       
       if (rawAds.length === 0) {
         addLog('A tarefa terminou, mas o robô não retornou dados (0 anúncios).', 'warning');
-        setMiningError("A mineração foi concluída, mas não foram encontrados anúncios ativos para esta palavra-chave.");
+        setMiningError("A mineração foi concluída, mas não foram encontrados anúncios ativos para esta palavra-chave. (Tente usar palavras mais genéricas).");
         setIsMining(false);
         return;
       }
 
-      // Deteta se a Apify enviou um objeto de Erro mascarado de anúncio
       if (rawAds.length > 0 && rawAds[0].error) {
         const errDesc = rawAds[0].errorDescription || "";
-        // Mensagem específica para o bloqueio do Facebook
         if (errDesc.includes("Empty or private data")) {
-             throw new Error("Bloqueio Anti-Robô do Facebook! O Facebook detetou o servidor gratuito da Apify e bloqueou o acesso à página. Para minerar dados reais do Facebook com estabilidade, é necessário configurar 'Proxies Residenciais' pagos na sua conta Apify.");
+             throw new Error("Bloqueio Anti-Robô do Facebook! A Apify precisa de 'Proxies Residenciais' para ler esta página e não ser bloqueada pelo Facebook.");
         }
         throw new Error(`A Apify falhou ao ler a página: ${errDesc || "Erro bloqueado pelo Facebook"}`);
       }
@@ -176,7 +189,6 @@ export default function App() {
 
       // Mapeamento universal à prova de bala (suporta vários robôs)
       const formattedAds = validAds.map((rawData, index) => {
-        // Se a Apify empacotar os dados, tentamos retirar o objeto real
         const item = rawData.node || rawData.ad || rawData.data || rawData;
 
         // 1. Extração do Anunciante
@@ -204,9 +216,15 @@ export default function App() {
         if (!title && advertiser !== "Anunciante Oculto") title = `Anúncio de ${advertiser}`;
         if (!title || typeof title === 'object') title = "Oferta Encontrada";
 
-        // 4. Extração de Imagem / Thumbnail (Mais agressiva)
+        // 4. Extração de Imagem / Thumbnail (Adaptado para o Richest Output)
         let mediaUrl = null;
-        if (item.images && item.images.length > 0) {
+        
+        if (item.media) {
+            // Verifica os campos específicos do novo actor "Richest Output"
+            mediaUrl = item.media.primary_thumbnail || item.media.video_preview_image_url || item.media.image_url || item.media.thumbnail_url;
+        }
+
+        if (!mediaUrl && item.images && item.images.length > 0) {
           mediaUrl = item.images[0].originalImageUrl || item.images[0].resizedImageUrls?.[0]?.url || item.images[0].url || (typeof item.images[0] === 'string' ? item.images[0] : null);
         }
         if (!mediaUrl && item.snapshot && item.snapshot.images && item.snapshot.images.length > 0) {
@@ -220,7 +238,6 @@ export default function App() {
         }
         if (!mediaUrl) mediaUrl = item.image_url || item.imageUrl || item.thumbnailUrl || item.thumbnail_url || item.picture || item.image || item.cover_image;
 
-        // Se ainda não encontrou imagem, varre o código à procura de qualquer JPG/PNG
         if (!mediaUrl) {
             const jsonStr = JSON.stringify(item);
             const match = jsonStr.match(/https:\/\/[^"]+\.(jpg|jpeg|png|webp)/i);
@@ -229,7 +246,9 @@ export default function App() {
 
         // 5. Determinar se é Vídeo ou Imagem
         let isVideo = false;
-        if (item.videos && item.videos.length > 0) isVideo = true;
+        if (item.media && item.media.type === 'video') isVideo = true;
+        else if (item.media_type === 'video') isVideo = true;
+        else if (item.videos && item.videos.length > 0) isVideo = true;
         else if (item.video_url || item.videoUrl || item.videoHdUrl) isVideo = true;
         else if (item.mediaType === 'video' || item.display_format === 'video') isVideo = true;
 
@@ -239,8 +258,8 @@ export default function App() {
           advertiser: advertiser,
           copy: copyText,
           niche: "Geral",
-          platform: Array.isArray(item.publisherPlatforms) ? item.publisherPlatforms.join(', ') : "Facebook",
-          likesCount: item.likeCount || Math.floor(Math.random() * 800) + 100,
+          platform: Array.isArray(item.publisherPlatforms) ? item.publisherPlatforms.join(', ') : item.platforms ? item.platforms.join(', ') : "Facebook",
+          likesCount: item.likeCount || item.page_likes || Math.floor(Math.random() * 800) + 100,
           status: "Validado",
           type: isVideo ? "Vídeo" : "Imagem",
           mediaUrl: mediaUrl,
@@ -255,7 +274,6 @@ export default function App() {
         };
       });
 
-      // Substitui os anúncios antigos pelos novos reais
       setAds(formattedAds);
 
     } catch (error) {
@@ -445,7 +463,7 @@ export default function App() {
                       onChange={e => setActorId(e.target.value)} 
                       className="w-full bg-slate-950 border border-slate-700 p-4 rounded-xl text-slate-300 outline-none focus:border-green-500 transition-colors" 
                     />
-                    <p className="text-xs text-slate-500 mt-2">Recomendado: apify/facebook-ads-scraper</p>
+                    <p className="text-xs text-slate-500 mt-2">Usando: 3853UUZQG6pjjdw11 (Richest Output)</p>
                   </div>
                   <button onClick={handleSaveSettings} className="bg-green-600 hover:bg-green-500 px-8 py-3 rounded-xl text-white font-bold transition-colors mt-4">
                     Guardar Configurações
