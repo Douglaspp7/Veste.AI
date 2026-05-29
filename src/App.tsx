@@ -85,13 +85,12 @@ export default function App() {
       
       // Lógica de Adaptação Automática de Payload consoante o Actor escolhido
       if (safeActorId.includes('dz_omar') || safeActorId.includes('20nRTxLD3a3jIlZbZ')) {
-        // NOVO: Formato Exato conforme a documentação oficial do dz_omar/facebook-ads-scraper-pro
         payload = {
-          searchQueries: [miningKeyword.trim()], // Documentação: "searchQueries" (não searchTerms)
-          countries: ["BR"],                     // Documentação: "countries" é array []
-          activeStatus: "ACTIVE",                // Obrigatório maiúsculas
-          adType: "ALL",                         // Filtro extra recomendado na doc
-          maxResultsPerQuery: 30                 // Documentação: "maxResultsPerQuery"
+          searchQueries: [miningKeyword.trim()], 
+          countries: "BR",                       // CORREÇÃO: A documentação tem um erro. A API exige STRING "BR" e não ARRAY ["BR"].
+          activeStatus: "ACTIVE",                
+          adType: "ALL",                         
+          maxResultsPerQuery: 30                 
         };
       } else if (safeActorId.includes('3853UUZQG6pjjdw11') || safeActorId.includes('memo23')) {
         payload = {
