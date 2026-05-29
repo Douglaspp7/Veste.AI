@@ -53,7 +53,7 @@ export default function App() {
   const [systemLogs, setSystemLogs] = useState([]);
   const [showSettings, setShowSettings] = useState(false);
   const [apifyToken, setApifyToken] = useState('');
-  const [actorId, setActorId] = useState('dz_omar/facebook-ads-scraper-pro');
+  const [actorId, setActorId] = useState('apify/facebook-ads-scraper');
 
   const [selectedAd, setSelectedAd] = useState(null);
 
@@ -96,11 +96,25 @@ export default function App() {
     const safeActorId = actor.replace('/', '~');
     
     try {
-      const payload = {
-        searchTerms: [miningKeyword.trim()],
-        countries: "BR",
-        activeStatus: "ACTIVE" 
-      };
+      let payload = {};
+      
+      // Lógica Inteligente: Adapta o formato da pesquisa dependendo do Robô escolhido
+      if (safeActorId.includes('dz_omar')) {
+        payload = {
+          searchTerms: [miningKeyword.trim()],
+          countries: "BR",
+          activeStatus: "ACTIVE" 
+        };
+      } else {
+        // Formato Exigido pelo Robô Oficial "apify/facebook-ads-scraper"
+        const keywordEncoded = encodeURIComponent(miningKeyword.trim());
+        payload = {
+          startUrls: [
+            { url: `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=BR&q=${keywordEncoded}` }
+          ],
+          resultsLimit: 50 // Protege contra gastos excessivos de créditos
+        };
+      }
 
       const runResponse = await fetch(`https://api.apify.com/v2/acts/${safeActorId}/runs?token=${token}`, {
         method: 'POST',
@@ -110,7 +124,7 @@ export default function App() {
 
       if (!runResponse.ok) {
          if (runResponse.status === 403) {
-             throw new Error("Erro 403: Acesso Proibido. O seu token não tem permissão para usar este actor. Tente mudar para 'apify/facebook-ads-scraper' nas configurações.");
+             throw new Error("Erro 403: Acesso Proibido. O seu token não tem permissão para usar este actor.");
          }
          const err = await runResponse.json();
          throw new Error(`Erro ${runResponse.status}: ${err.error?.message || "Token inválido ou acesso negado."}`);
@@ -141,8 +155,7 @@ export default function App() {
             finished = true;
             addLog('Extração concluída na Apify!');
         } else if (['FAILED', 'ABORTED'].includes(statusData.data.status)) {
-            // Tenta ir buscar a mensagem de erro exata da API
-            const errorMessage = statusData.data.statusMessage || "O robô encontrou um erro crítico. Vá ao site da Apify > Menu Esquerdo 'Runs' > Clique no run que falhou > Separador 'Log' para ler o motivo do erro.";
+            const errorMessage = statusData.data.statusMessage || "O robô encontrou um erro crítico. Vá ao site da Apify > Menu Esquerdo 'Runs' > Clique no run que falhou > Separador 'Log'.";
             throw new Error(`ESTADO FAILED: ${errorMessage}`);
         } else {
             addLog(`Estado atual: ${statusData.data.status}... a recolher dados.`);
@@ -163,10 +176,11 @@ export default function App() {
       addLog(`Sucesso total! ${rawAds.length} anúncios transferidos.`, 'success');
 
       const formattedAds = rawAds.map((item, index) => {
-        const copyText = item.body || item.primaryText || item.text || item.title || "Sem descrição disponível.";
+        // O robô oficial pode ter nomes de propriedades diferentes
+        const copyText = item.body || item.primaryText || item.text || item.title || item.adCreativeBody || "Sem descrição disponível.";
         return {
           id: Date.now() + index,
-          title: item.pageName || `Anúncio ${index + 1}`,
+          title: item.pageName || item.publisherPlatform || `Anúncio ${index + 1}`,
           advertiser: item.pageName || "Página Desconhecida",
           copy: copyText,
           niche: "Geral",
@@ -363,7 +377,7 @@ export default function App() {
                       onChange={e => setActorId(e.target.value)} 
                       className="w-full bg-slate-950 border border-slate-700 p-4 rounded-xl text-slate-300 outline-none focus:border-green-500 transition-colors" 
                     />
-                    <p className="text-xs text-slate-500 mt-2">Recomendado: dz_omar/facebook-ads-scraper-pro ou apify/facebook-ads-scraper</p>
+                    <p className="text-xs text-slate-500 mt-2">Recomendado: apify/facebook-ads-scraper</p>
                   </div>
                   <button onClick={handleSaveSettings} className="bg-green-600 hover:bg-green-500 px-8 py-3 rounded-xl text-white font-bold transition-colors mt-4">
                     Guardar Configurações
