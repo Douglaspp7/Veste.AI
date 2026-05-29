@@ -178,18 +178,23 @@ export default function App() {
         throw new Error(`A Apify falhou ao ler a página: ${errDesc || "Erro bloqueado pelo Facebook"}`);
       }
 
-      const validAds = rawAds.filter(item => !item.error && item.type !== 'summary' && item.type !== 'query_complete' && item.type !== 'complete'); 
+      // CORREÇÃO: Limpamos os logs da Apify sem causar erro de "item is not defined"
+      const validAds = rawAds.filter(rawAd => {
+          if (rawAd.error) return false;
+          if (rawAd.type === 'summary' || rawAd.type === 'query_complete' || rawAd.type === 'complete' || rawAd.type === 'log') return false;
+          return true;
+      });
 
       if (validAds.length === 0) {
         throw new Error("Os resultados retornados pela Apify contêm apenas logs ou erros, nenhum anúncio válido.");
       }
 
       let adsToProcess = [];
-      validAds.forEach(item => {
-          if (item.type === 'batch' && item.ads && Array.isArray(item.ads)) {
-              adsToProcess = [...adsToProcess, ...item.ads];
-          } else if (!item.type || item.page_id || item.id) { 
-              adsToProcess.push(item);
+      validAds.forEach(rawAd => {
+          if (rawAd.type === 'batch' && rawAd.ads && Array.isArray(rawAd.ads)) {
+              adsToProcess = [...adsToProcess, ...rawAd.ads];
+          } else if (!rawAd.type || rawAd.page_id || rawAd.id || rawAd.node || rawAd.ad) { 
+              adsToProcess.push(rawAd);
           }
       });
 
