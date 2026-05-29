@@ -4,7 +4,7 @@ import {
   Search, Filter, Heart, LayoutDashboard, Settings, ThumbsUp, MessageCircle,
   ExternalLink, PlayCircle, X, BarChart2, CheckCircle2, Menu, Download, Target,
   Zap, Image as ImageIcon, Copy, TrendingUp, Sparkles, ShoppingCart, ArrowDownWideNarrow,
-  Crosshair, Lock, ArrowRight, Loader2
+  Crosshair, Lock, ArrowRight, Loader2, AlertCircle
 } from 'lucide-react';
 
 const MOCK_ADS = [
@@ -60,6 +60,7 @@ export default function App() {
   const [ads, setAds] = useState(MOCK_ADS);
   const [isMining, setIsMining] = useState(false);
   const [miningKeyword, setMiningKeyword] = useState('');
+  const [miningError, setMiningError] = useState(''); // Novo estado para erros visuais
   const [showSettings, setShowSettings] = useState(false);
   const [apifyToken, setApifyToken] = useState('');
   const [actorId, setActorId] = useState('dz_omar/facebook-ads-scraper-pro');
@@ -85,38 +86,41 @@ export default function App() {
 
   const handleSaveSettings = () => {
     try {
-      localStorage.setItem('adsniper_apify_token', apifyToken);
-      localStorage.setItem('adsniper_apify_actor', actorId);
+      localStorage.setItem('adsniper_apify_token', apifyToken.trim());
+      localStorage.setItem('adsniper_apify_actor', actorId.trim());
     } catch (e) { }
     setShowSettings(false);
-    alert('Configurações da Apify guardadas!');
+    alert('Configurações da Apify guardadas com sucesso!');
   };
 
-  // --- NOVA FUNÇÃO DE MINERAÇÃO DIRETA (COM CORREÇÃO DE URL E TRATAMENTO DE CORS) ---
   const startMining = async () => {
-    if (!apifyToken) {
-      alert("Por favor, configure o seu Token da Apify nas Configurações (menu lateral).");
+    setMiningError(''); // Limpa erros anteriores
+    const token = apifyToken.trim();
+    const actor = actorId.trim();
+
+    if (!token) {
+      setMiningError("Por favor, configure o seu Token da Apify nas Configurações (menu lateral).");
       return;
     }
-    if (!miningKeyword) {
-      alert("Digite uma palavra-chave para minerar!");
+    if (!miningKeyword.trim()) {
+      setMiningError("Digite uma palavra-chave válida para minerar!");
       return;
     }
 
     setIsMining(true);
     
-    // CORREÇÃO CRÍTICA: A Apify exige que as barras '/' nos IDs sejam substituídas por '~' nas hiperligações da API.
-    const safeActorId = actorId.replace('/', '~');
+    // CORREÇÃO CRÍTICA: A Apify exige que as barras '/' nos IDs sejam substituídas por '~'
+    const safeActorId = actor.replace('/', '~');
     
     try {
       console.log("A iniciar robô na Apify com o ID seguro:", safeActorId);
 
       // 1. Iniciar o robô diretamente
-      const runResponse = await fetch(`https://api.apify.com/v2/acts/${safeActorId}/runs?token=${apifyToken}`, {
+      const runResponse = await fetch(`https://api.apify.com/v2/acts/${safeActorId}/runs?token=${token}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            searchTerms: [miningKeyword],
+            searchTerms: [miningKeyword.trim()],
             countries: ["BR"],
             activeStatus: "active" // Apenas anúncios ativos
         })
@@ -125,7 +129,7 @@ export default function App() {
       if (!runResponse.ok) {
          const errorData = await runResponse.json();
          console.error("Erro da Apify ao iniciar:", errorData);
-         throw new Error("Falha ao comunicar com a Apify. Verifique o seu Token.");
+         throw new Error(errorData.error?.message || "Falha ao comunicar com a Apify. Verifique o seu Token.");
       }
       
       const runData = await runResponse.json();
@@ -134,43 +138,42 @@ export default function App() {
 
       console.log("Robô iniciado! ID da Tarefa:", runId);
 
-      // 2. Esperar que o robô termine (O Navegador aguarda o tempo que for preciso)
+      // 2. Esperar que o robô termine
       let isFinished = false;
       while (!isFinished) {
         await new Promise(r => setTimeout(r, 5000)); // Espera 5 segundos
         
-        const statusRes = await fetch(`https://api.apify.com/v2/acts/${safeActorId}/runs/${runId}?token=${apifyToken}`);
+        const statusRes = await fetch(`https://api.apify.com/v2/acts/${safeActorId}/runs/${runId}?token=${token}`);
         const statusData = await statusRes.json();
         
-        console.log("Estado da extração:", statusData.data.status); // Log no F12
+        console.log("Estado da extração:", statusData.data.status); 
         
         if (statusData.data.status === 'SUCCEEDED') {
             isFinished = true;
         } else if (statusData.data.status === 'FAILED' || statusData.data.status === 'ABORTED') {
-            throw new Error(`O robô na Apify falhou com o estado: ${statusData.data.status}`);
+            throw new Error(`O robô na Apify falhou. Motivo: Erro interno no Scraper da Apify.`);
         }
       }
 
       // 3. Puxar os dados recolhidos
       console.log("A puxar os dados...");
-      const datasetRes = await fetch(`https://api.apify.com/v2/datasets/${datasetId}/items?token=${apifyToken}`);
+      const datasetRes = await fetch(`https://api.apify.com/v2/datasets/${datasetId}/items?token=${token}`);
       const rawAds = await datasetRes.json();
 
       console.log("Dados crus recebidos:", rawAds);
 
       // 4. Formatar os dados do scraper-pro para o nosso painel
       const formattedAds = rawAds.map((item, index) => {
-        // Tenta encontrar a melhor cópia disponível
         const copyText = item.body || item.primaryText || item.text || item.title || "Sem descrição disponível.";
         
         return {
-          id: 100 + index,
+          id: Date.now() + index,
           title: item.pageName || `Oferta: ${miningKeyword.toUpperCase()}`,
           advertiser: item.pageName || "Página Desconhecida",
           copy: copyText,
           niche: "Geral", 
           platform: item.publisherPlatforms ? item.publisherPlatforms.join(', ') : "Facebook",
-          likes: "1.2k", // A API nativa do fb costuma omitir likes
+          likes: "1.2k", 
           likesCount: 1200,
           comments: "150",
           status: "Escalando",
@@ -189,15 +192,19 @@ export default function App() {
       });
 
       if (formattedAds.length === 0) {
-          alert("O robô terminou, mas não encontrou anúncios para esta palavra.");
+          setMiningError("A pesquisa terminou, mas a Apify não encontrou nenhum anúncio para esta palavra-chave.");
       } else {
-          setAds([...formattedAds, ...MOCK_ADS]);
-          alert(`${formattedAds.length} anúncios reais minerados com sucesso!`);
+          setAds([...formattedAds, ...ads]);
+          // Não usar alert, o utilizador vê os cards na tela
       }
 
     } catch (error) {
-      alert(`Erro na mineração: ${error.message}\n\nDICA: Se vir "Failed to fetch", o seu bloqueador de anúncios (AdBlock) pode estar a cortar a ligação. Tente usar uma janela anónima.`);
-      console.error(error);
+      console.error("ERRO COMPLETO:", error);
+      if (error.message.includes('Failed to fetch')) {
+        setMiningError("LIGAÇÃO BLOQUEADA: O seu navegador impediu a ligação. Isto acontece porque tem uma extensão de AdBlock ativa (veja o ícone de Stop/Escudo no canto superior direito do seu ecrã). Por favor, pause o AdBlock para este site e tente novamente.");
+      } else {
+        setMiningError(`Erro na mineração: ${error.message}`);
+      }
     } finally {
       setIsMining(false);
     }
@@ -342,6 +349,17 @@ export default function App() {
         {/* DASHBOARD SCROLL AREA */}
         <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6 lg:p-8">
           
+          {/* MENSAGEM DE ERRO VISUAL */}
+          {miningError && (
+             <div className="mb-8 p-4 rounded-xl bg-red-500/10 border border-red-500/30 flex items-start gap-4 shadow-lg">
+                <AlertCircle className="w-6 h-6 text-red-500 shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="text-red-400 font-bold text-lg mb-1">Atenção Necessária</h3>
+                  <p className="text-slate-300 text-sm leading-relaxed">{miningError}</p>
+                </div>
+             </div>
+          )}
+
           {showSettings ? (
             /* CONFIGURAÇÕES TELA */
             <div className="max-w-2xl bg-slate-900 border border-slate-800 rounded-xl p-8">
@@ -380,7 +398,7 @@ export default function App() {
                     <Loader2 className="w-8 h-8 text-green-500 animate-spin" />
                     <div>
                       <h3 className="text-green-400 font-bold text-lg">A pesquisar na Meta Ad Library...</h3>
-                      <p className="text-slate-400 text-sm">Este processo pode demorar até 2 minutos. Não feche a janela.</p>
+                      <p className="text-slate-400 text-sm">Este processo pode demorar até 2 minutos. Não feche a janela nem mude de separador.</p>
                     </div>
                  </div>
               )}
