@@ -5,24 +5,6 @@ import {
   LayoutDashboard, PlayCircle, Image as ImageIcon, BarChart2, X, Terminal, AlertCircle, Code
 } from 'lucide-react';
 
-const MOCK_ADS = [
-  {
-    id: 1,
-    title: "Exemplo - Gota Glicosada",
-    advertiser: "Saúde & Vida BR",
-    copy: "Descubra o segredo milenar que está a ajudar milhares de brasileiros. Veja o vídeo antes que saia do ar!",
-    niche: "Saúde",
-    platform: "Facebook",
-    likesCount: 12400,
-    status: "Validado",
-    type: "Vídeo",
-    color: "from-emerald-600 to-green-900",
-    mediaUrl: null,
-    rawData: "N/A - Anúncio Falso",
-    aiAnalysis: { persuasion: 92, retention: 85, cta: 88, appeal: "Curiosidade" }
-  }
-];
-
 const StatusBadge = ({ status }) => {
   const colors = {
     "Escalando": "bg-green-500/20 text-green-400 border-green-500/30",
@@ -48,7 +30,8 @@ export default function App() {
   const [passwordInput, setPasswordInput] = useState('');
   const [loginError, setLoginError] = useState(false);
 
-  const [ads, setAds] = useState(MOCK_ADS);
+  // Inicia com o ecrã totalmente limpo (sem anúncios de exemplo)
+  const [ads, setAds] = useState([]);
   const [isMining, setIsMining] = useState(false);
   const [miningKeyword, setMiningKeyword] = useState('');
   const [miningError, setMiningError] = useState('');
@@ -168,20 +151,26 @@ export default function App() {
       
       if (rawAds.length === 0) {
         addLog('A tarefa terminou, mas o robô não retornou dados (0 anúncios).', 'warning');
-        setMiningError("A mineração foi concluída, mas não foram encontrados anúncios ativos para esta palavra-chave. (Verifique se não há erros ortográficos na palavra!)");
+        setMiningError("A mineração foi concluída, mas não foram encontrados anúncios ativos para esta palavra-chave.");
         setIsMining(false);
         return;
       }
 
-      addLog(`Sucesso total! ${rawAds.length} anúncios transferidos.`, 'success');
-      
-      // Regista as chaves do primeiro anúncio para efeitos de debugging (caso falhe o mapeamento)
-      if (rawAds.length > 0) {
-        addLog(`INFO TÉCNICA: Chaves base detetadas: ${Object.keys(rawAds[0]).join(', ')}`, 'warning');
+      // Deteta se a Apify enviou um objeto de Erro mascarado de anúncio
+      if (rawAds.length > 0 && rawAds[0].error) {
+        throw new Error(`A Apify falhou ao ler a página: ${rawAds[0].errorDescription || "Erro bloqueado pelo Facebook"}`);
       }
 
+      const validAds = rawAds.filter(item => !item.error);
+
+      if (validAds.length === 0) {
+        throw new Error("Os resultados retornados pela Apify contêm apenas erros.");
+      }
+
+      addLog(`Sucesso total! ${validAds.length} anúncios transferidos.`, 'success');
+
       // Mapeamento universal à prova de bala (suporta vários robôs)
-      const formattedAds = rawAds.map((rawData, index) => {
+      const formattedAds = validAds.map((rawData, index) => {
         // Se a Apify empacotar os dados, tentamos retirar o objeto real
         const item = rawData.node || rawData.ad || rawData.data || rawData;
 
@@ -210,18 +199,28 @@ export default function App() {
         if (!title && advertiser !== "Anunciante Oculto") title = `Anúncio de ${advertiser}`;
         if (!title || typeof title === 'object') title = "Oferta Encontrada";
 
-        // 4. Extração de Imagem / Thumbnail
+        // 4. Extração de Imagem / Thumbnail (Mais agressiva)
         let mediaUrl = null;
         if (item.images && item.images.length > 0) {
           mediaUrl = item.images[0].originalImageUrl || item.images[0].resizedImageUrls?.[0]?.url || item.images[0].url || (typeof item.images[0] === 'string' ? item.images[0] : null);
+        }
+        if (!mediaUrl && item.snapshot && item.snapshot.images && item.snapshot.images.length > 0) {
+            mediaUrl = item.snapshot.images[0].url; 
         }
         if (!mediaUrl && item.adCreativeMedia && item.adCreativeMedia.length > 0) {
           mediaUrl = item.adCreativeMedia[0].image_url || item.adCreativeMedia[0].imageUrl;
         }
         if (!mediaUrl && item.videos && item.videos.length > 0) {
-          mediaUrl = item.videos[0].videoPreviewImageUrl || item.videos[0].previewUrl || item.videos[0].imageUrl;
+          mediaUrl = item.videos[0].videoPreviewImageUrl || item.videos[0].previewUrl || item.videos[0].imageUrl || item.videos[0].coverUrl || (typeof item.videos[0] === 'string' ? item.videos[0] : null);
         }
-        if (!mediaUrl) mediaUrl = item.image_url || item.imageUrl || item.thumbnailUrl || item.thumbnail_url || item.picture;
+        if (!mediaUrl) mediaUrl = item.image_url || item.imageUrl || item.thumbnailUrl || item.thumbnail_url || item.picture || item.image || item.cover_image;
+
+        // Se ainda não encontrou imagem, varre o código à procura de qualquer JPG/PNG
+        if (!mediaUrl) {
+            const jsonStr = JSON.stringify(item);
+            const match = jsonStr.match(/https:\/\/[^"]+\.(jpg|jpeg|png|webp)/i);
+            if (match) mediaUrl = match[0];
+        }
 
         // 5. Determinar se é Vídeo ou Imagem
         let isVideo = false;
@@ -241,7 +240,7 @@ export default function App() {
           type: isVideo ? "Vídeo" : "Imagem",
           mediaUrl: mediaUrl,
           color: "from-slate-700 to-slate-900",
-          rawData: JSON.stringify(rawData, null, 2), // Guardamos os dados crus para visualização no modal
+          rawData: JSON.stringify(rawData, null, 2),
           aiAnalysis: { 
             persuasion: Math.floor(Math.random() * 15 + 80), 
             retention: Math.floor(Math.random() * 20 + 70), 
@@ -251,7 +250,7 @@ export default function App() {
         };
       });
 
-      // Substitui os anúncios antigos estritamente pelos novos (O mock é apagado aqui)
+      // Substitui os anúncios antigos pelos novos reais
       setAds(formattedAds);
 
     } catch (error) {
