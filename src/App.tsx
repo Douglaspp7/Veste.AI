@@ -92,7 +92,7 @@ export default function App() {
     alert('Configurações da Apify guardadas!');
   };
 
-  // --- NOVA FUNÇÃO DE MINERAÇÃO DIRETA (SEM VERCEL TIMEOUT) ---
+  // --- NOVA FUNÇÃO DE MINERAÇÃO DIRETA (COM CORREÇÃO DE URL E TRATAMENTO DE CORS) ---
   const startMining = async () => {
     if (!apifyToken) {
       alert("Por favor, configure o seu Token da Apify nas Configurações (menu lateral).");
@@ -105,11 +105,14 @@ export default function App() {
 
     setIsMining(true);
     
+    // CORREÇÃO CRÍTICA: A Apify exige que as barras '/' nos IDs sejam substituídas por '~' nas hiperligações da API.
+    const safeActorId = actorId.replace('/', '~');
+    
     try {
-      console.log("A iniciar robô na Apify...");
+      console.log("A iniciar robô na Apify com o ID seguro:", safeActorId);
 
       // 1. Iniciar o robô diretamente
-      const runResponse = await fetch(`https://api.apify.com/v2/acts/${actorId}/runs?token=${apifyToken}`, {
+      const runResponse = await fetch(`https://api.apify.com/v2/acts/${safeActorId}/runs?token=${apifyToken}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -136,7 +139,7 @@ export default function App() {
       while (!isFinished) {
         await new Promise(r => setTimeout(r, 5000)); // Espera 5 segundos
         
-        const statusRes = await fetch(`https://api.apify.com/v2/acts/${actorId}/runs/${runId}?token=${apifyToken}`);
+        const statusRes = await fetch(`https://api.apify.com/v2/acts/${safeActorId}/runs/${runId}?token=${apifyToken}`);
         const statusData = await statusRes.json();
         
         console.log("Estado da extração:", statusData.data.status); // Log no F12
@@ -193,7 +196,7 @@ export default function App() {
       }
 
     } catch (error) {
-      alert(`Erro na mineração: ${error.message}`);
+      alert(`Erro na mineração: ${error.message}\n\nDICA: Se vir "Failed to fetch", o seu bloqueador de anúncios (AdBlock) pode estar a cortar a ligação. Tente usar uma janela anónima.`);
       console.error(error);
     } finally {
       setIsMining(false);
