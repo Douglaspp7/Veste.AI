@@ -96,7 +96,6 @@ export default function App() {
     const safeActorId = actor.replace('/', '~');
     
     try {
-      // CORREÇÃO: "activeStatus" agora é "ACTIVE" em letras maiúsculas
       const payload = {
         searchTerms: [miningKeyword.trim()],
         countries: "BR",
@@ -111,16 +110,14 @@ export default function App() {
 
       if (!runResponse.ok) {
          if (runResponse.status === 403) {
-             throw new Error("Erro 403: Acesso Proibido. O seu token não tem permissão para usar este actor. Pode tentar mudar para 'apify/facebook-ads-scraper' nas configurações.");
+             throw new Error("Erro 403: Acesso Proibido. O seu token não tem permissão para usar este actor. Tente mudar para 'apify/facebook-ads-scraper' nas configurações.");
          }
          const err = await runResponse.json();
-         // Mostra a mensagem exata devolvida pela Apify, ou um erro genérico
          throw new Error(`Erro ${runResponse.status}: ${err.error?.message || "Token inválido ou acesso negado."}`);
       }
       
       const runData = await runResponse.json();
       
-      // Validação extra caso a Apify devolva um 200/201 mas o payload esteja vazio
       if (!runData || !runData.data || !runData.data.id) {
           throw new Error("A resposta da Apify foi bem-sucedida, mas não devolveu um ID de execução. Verifique as configurações.");
       }
@@ -130,12 +127,12 @@ export default function App() {
 
       let finished = false;
       while (!finished) {
-        await new Promise(r => setTimeout(r, 4000)); // Espera 4 segundos
+        await new Promise(r => setTimeout(r, 4000));
         const statusRes = await fetch(`https://api.apify.com/v2/acts/${safeActorId}/runs/${runId}?token=${token}`);
         
         if (!statusRes.ok) {
            addLog(`Aviso: Falha ao verificar o estado. Código: ${statusRes.status}`, 'warning');
-           continue; // Tenta na próxima iteração
+           continue; 
         }
 
         const statusData = await statusRes.json();
@@ -144,9 +141,10 @@ export default function App() {
             finished = true;
             addLog('Extração concluída na Apify!');
         } else if (['FAILED', 'ABORTED'].includes(statusData.data.status)) {
-            throw new Error(`O robô falhou na plataforma da Apify com o estado: ${statusData.data.status}. Verifique o seu saldo ou os limites da conta.`);
+            // Tenta ir buscar a mensagem de erro exata da API
+            const errorMessage = statusData.data.statusMessage || "O robô encontrou um erro crítico. Vá ao site da Apify > Menu Esquerdo 'Runs' > Clique no run que falhou > Separador 'Log' para ler o motivo do erro.";
+            throw new Error(`ESTADO FAILED: ${errorMessage}`);
         } else {
-            // Atualiza os logs para mostrar atividade
             addLog(`Estado atual: ${statusData.data.status}... a recolher dados.`);
         }
       }
@@ -365,7 +363,7 @@ export default function App() {
                       onChange={e => setActorId(e.target.value)} 
                       className="w-full bg-slate-950 border border-slate-700 p-4 rounded-xl text-slate-300 outline-none focus:border-green-500 transition-colors" 
                     />
-                    <p className="text-xs text-slate-500 mt-2">Recomendado: dz_omar/facebook-ads-scraper-pro</p>
+                    <p className="text-xs text-slate-500 mt-2">Recomendado: dz_omar/facebook-ads-scraper-pro ou apify/facebook-ads-scraper</p>
                   </div>
                   <button onClick={handleSaveSettings} className="bg-green-600 hover:bg-green-500 px-8 py-3 rounded-xl text-white font-bold transition-colors mt-4">
                     Guardar Configurações
