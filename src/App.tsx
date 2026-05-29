@@ -42,12 +42,6 @@ const StatusBadge = ({ status }) => {
   );
 };
 
-const PlatformBadge = ({ platform }) => (
-  <span className="bg-slate-900 text-slate-300 px-2 py-0.5 rounded text-xs font-semibold border border-slate-700">
-    {platform}
-  </span>
-);
-
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
@@ -62,12 +56,7 @@ export default function App() {
   const [apifyToken, setApifyToken] = useState('');
   const [actorId, setActorId] = useState('dz_omar/facebook-ads-scraper-pro');
 
-  const [searchTerm, setSearchTerm] = useState('');
-  const [activeCategory, setActiveCategory] = useState('Todos');
-  const [activePlatform, setActivePlatform] = useState('Todas');
-  const [sortBy, setSortBy] = useState('Recentes');
   const [selectedAd, setSelectedAd] = useState(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const addLog = (msg, type = 'info') => {
     setSystemLogs(prev => [...prev.slice(-4), { msg, type, time: new Date().toLocaleTimeString() }]);
@@ -111,6 +100,9 @@ export default function App() {
       });
 
       if (!runResponse.ok) {
+         if (runResponse.status === 403) {
+             throw new Error("Erro 403: Acesso Proibido. O seu token não tem permissão para executar este actor ou a sua subscrição Apify expirou.");
+         }
          const err = await runResponse.json();
          throw new Error(err.error?.message || "Token inválido ou acesso negado.");
       }
