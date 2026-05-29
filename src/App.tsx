@@ -37,7 +37,7 @@ export default function App() {
   const [systemLogs, setSystemLogs] = useState([]);
   const [showSettings, setShowSettings] = useState(false);
   const [apifyToken, setApifyToken] = useState('');
-  const [actorId, setActorId] = useState('dz_omar/facebook-ads-scraper-pro'); // Voltamos ao dz_omar por defeito
+  const [actorId, setActorId] = useState('dz_omar/facebook-ads-scraper-pro'); 
 
   const [selectedAd, setSelectedAd] = useState(null);
 
@@ -83,11 +83,10 @@ export default function App() {
       let payload = {};
       const keywordEncoded = encodeURIComponent(miningKeyword.trim());
       
-      // Lógica de Adaptação Automática de Payload consoante o Actor escolhido
       if (safeActorId.includes('dz_omar') || safeActorId.includes('20nRTxLD3a3jIlZbZ')) {
         payload = {
           searchQueries: [miningKeyword.trim()], 
-          countries: "BR",                       // CORREÇÃO: A documentação tem um erro. A API exige STRING "BR" e não ARRAY ["BR"].
+          countries: ["BR"],                     
           activeStatus: "ACTIVE",                
           adType: "ALL",                         
           maxResultsPerQuery: 30                 
@@ -179,62 +178,60 @@ export default function App() {
         throw new Error(`A Apify falhou ao ler a página: ${errDesc || "Erro bloqueado pelo Facebook"}`);
       }
 
-      const validAds = rawAds.filter(item => !item.error && item.type !== 'summary' && item.type !== 'query_complete' && item.type !== 'complete'); // Filtra os logs do ndjson que o robô envia
+      const validAds = rawAds.filter(item => !item.error && item.type !== 'summary' && item.type !== 'query_complete' && item.type !== 'complete'); 
 
       if (validAds.length === 0) {
         throw new Error("Os resultados retornados pela Apify contêm apenas logs ou erros, nenhum anúncio válido.");
       }
 
-      // O robô do dz_omar pode envolver os anúncios num objeto "ads" dentro de um tipo "batch"
       let adsToProcess = [];
       validAds.forEach(item => {
           if (item.type === 'batch' && item.ads && Array.isArray(item.ads)) {
               adsToProcess = [...adsToProcess, ...item.ads];
-          } else if (!item.type || item.page_id) { // fallback
+          } else if (!item.type || item.page_id || item.id) { 
               adsToProcess.push(item);
           }
       });
 
-      if (adsToProcess.length === 0) adsToProcess = validAds; // se falhar, tenta processar o array original
+      if (adsToProcess.length === 0) adsToProcess = validAds; 
 
       addLog(`Sucesso total! ${adsToProcess.length} anúncios transferidos.`, 'success');
 
       const formattedAds = adsToProcess.map((rawData, index) => {
         const item = rawData.node || rawData.ad || rawData.data || rawData;
 
-        // 1. Extração do Anunciante
+        // 1. Extração Inteligente do Anunciante
         const advertiser = item.pageName || item.page_name || item.publisherPlatform || item.profileName || item.advertiser_name || "Anunciante Oculto";
         
-        // 2. Extração do Copy (Texto)
-        let copyText = "";
-        if (item.bodies && item.bodies.length > 0) copyText = item.bodies[0].text || item.bodies[0];
-        else if (item.adCreativeBodies && item.adCreativeBodies.length > 0) copyText = item.adCreativeBodies[0].text || item.adCreativeBodies[0];
-        else if (item.primaryText) copyText = item.primaryText;
-        else if (item.text) copyText = item.text;
-        else if (item.body) copyText = item.body.text || item.body;
-        else if (item.message) copyText = item.message;
+        // 2. Extração Otimizada do Texto (Corrigida a falha de leitura)
+        let copyText = item.text || item.primaryText || item.message || item.body || item.caption || "";
+        if (!copyText && item.bodies && item.bodies.length > 0) copyText = item.bodies[0].text || item.bodies[0];
+        if (!copyText && item.adCreativeBodies && item.adCreativeBodies.length > 0) copyText = item.adCreativeBodies[0].text || item.adCreativeBodies[0];
         
-        if (typeof copyText === 'object') copyText = "Erro: O texto está num formato não reconhecido.";
-        if (!copyText) copyText = "Sem descrição disponível na biblioteca.";
+        if (typeof copyText === 'object') copyText = JSON.stringify(copyText);
+        if (!copyText || copyText.trim() === "") copyText = "Sem descrição disponível na biblioteca.";
 
-        // 3. Extração do Título do Anúncio
-        let title = "";
-        if (item.titles && item.titles.length > 0) title = item.titles[0].text || item.titles[0];
-        else if (item.adCreativeLinkTitles && item.adCreativeLinkTitles.length > 0) title = item.adCreativeLinkTitles[0].text || item.adCreativeLinkTitles[0];
-        else if (item.title) title = item.title;
-        else if (item.headline) title = item.headline;
+        // 3. Extração do Título
+        let title = item.title || item.headline || "";
+        if (!title && item.titles && item.titles.length > 0) title = item.titles[0].text || item.titles[0];
+        if (!title && item.adCreativeLinkTitles && item.adCreativeLinkTitles.length > 0) title = item.adCreativeLinkTitles[0].text || item.adCreativeLinkTitles[0];
         
         if (!title && advertiser !== "Anunciante Oculto") title = `Anúncio de ${advertiser}`;
         if (!title || typeof title === 'object') title = "Oferta Encontrada";
 
-        // 4. Extração de Imagem / Thumbnail
+        // 4. Extração de URL de Vídeo Real (Para reproduzir no cartão)
+        let videoUrl = item.video_url || item.videoUrl || item.videoHdUrl || null;
+        if (!videoUrl && item.media && item.media.video_url) videoUrl = item.media.video_url;
+        if (!videoUrl && item.videos && item.videos.length > 0) {
+            videoUrl = item.videos[0].video_url || item.videos[0].videoHdUrl || item.videos[0].videoSdUrl || item.videos[0].url || (typeof item.videos[0] === 'string' ? item.videos[0] : null);
+        }
+
+        // 5. Extração da Imagem / Thumbnail
         let mediaUrl = null;
-        
         if (item.media) {
             mediaUrl = item.media.primary_thumbnail || item.media.video_preview_image_url || item.media.image_url || item.media.thumbnail_url;
             if(!mediaUrl && item.media.images && item.media.images.length > 0) mediaUrl = item.media.images[0];
         }
-
         if (!mediaUrl && item.images && item.images.length > 0) {
           mediaUrl = item.images[0].originalImageUrl || item.images[0].resizedImageUrls?.[0]?.url || item.images[0].url || (typeof item.images[0] === 'string' ? item.images[0] : null);
         }
@@ -249,18 +246,17 @@ export default function App() {
         }
         if (!mediaUrl) mediaUrl = item.image_url || item.imageUrl || item.thumbnailUrl || item.thumbnail_url || item.picture || item.image || item.cover_image;
 
+        // Varrer código em busca de imagens como último recurso
         if (!mediaUrl) {
             const jsonStr = JSON.stringify(item);
             const match = jsonStr.match(/https:\/\/[^"]+\.(jpg|jpeg|png|webp)/i);
             if (match) mediaUrl = match[0];
         }
 
-        // 5. Determinar se é Vídeo ou Imagem
-        let isVideo = false;
-        if (item.media && (item.media.type === 'video' || item.media.videos?.length > 0)) isVideo = true;
+        let isVideo = videoUrl ? true : false;
+        if (!isVideo && item.media && (item.media.type === 'video' || item.media.videos?.length > 0)) isVideo = true;
         else if (item.media_type === 'video') isVideo = true;
         else if (item.videos && item.videos.length > 0) isVideo = true;
-        else if (item.video_url || item.videoUrl || item.videoHdUrl) isVideo = true;
         else if (item.mediaType === 'video' || item.display_format === 'video') isVideo = true;
 
         return {
@@ -274,6 +270,7 @@ export default function App() {
           status: "Validado",
           type: isVideo ? "Vídeo" : "Imagem",
           mediaUrl: mediaUrl,
+          videoUrl: videoUrl,
           color: "from-slate-700 to-slate-900",
           rawData: JSON.stringify(rawData, null, 2),
           aiAnalysis: { 
@@ -417,16 +414,32 @@ export default function App() {
                   <div key={ad.id} className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden hover:border-green-500/50 transition-all group flex flex-col shadow-lg">
                     
                     <div className={`h-48 w-full bg-gradient-to-br ${ad.color} relative flex items-center justify-center overflow-hidden`}>
-                      {ad.mediaUrl ? (
-                         <img src={ad.mediaUrl} alt="Criativo do Anúncio" className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity duration-300" />
+                      
+                      {/* LÓGICA DE MÍDIA ATUALIZADA (Vídeos Reais + Imagens Desbloqueadas) */}
+                      {ad.videoUrl ? (
+                          <video 
+                              src={ad.videoUrl} 
+                              muted loop autoPlay playsInline
+                              referrerPolicy="no-referrer"
+                              className="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-300 z-0"
+                          />
+                      ) : ad.mediaUrl ? (
+                         <img 
+                            src={ad.mediaUrl} 
+                            alt="Criativo do Anúncio" 
+                            referrerPolicy="no-referrer" 
+                            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                            className="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-300 z-0" 
+                         />
                       ) : (
-                         <div className="absolute inset-0 bg-black/40 group-hover:bg-transparent transition-colors"></div>
+                         <div className="absolute inset-0 bg-black/40 group-hover:bg-transparent transition-colors z-0"></div>
                       )}
                       
-                      {ad.type === 'Vídeo' ? (
+                      {/* Fallback de Ícones e Badges */}
+                      {ad.type === 'Vídeo' && !ad.videoUrl ? (
                         <PlayCircle className="w-14 h-14 text-white/90 drop-shadow-xl z-10" />
                       ) : (
-                        !ad.mediaUrl && <ImageIcon className="w-14 h-14 text-white/60 z-10" />
+                        !ad.mediaUrl && !ad.videoUrl && <ImageIcon className="w-14 h-14 text-white/60 z-10" />
                       )}
                       <div className="absolute top-3 left-3 z-10"><PlatformBadge platform={ad.platform} /></div>
                     </div>
