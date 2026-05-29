@@ -86,7 +86,7 @@ export default function App() {
       if (safeActorId.includes('dz_omar') || safeActorId.includes('20nRTxLD3a3jIlZbZ')) {
         payload = {
           searchQueries: [miningKeyword.trim()], 
-          countries: "BR",                       // CORREÇÃO DEFINITIVA: String em vez de Array, ignorando a documentação errada do criador.
+          countries: "BR",                       
           activeStatus: "ACTIVE",                
           adType: "ALL",                         
           maxResultsPerQuery: 30                 
@@ -198,66 +198,84 @@ export default function App() {
       addLog(`Sucesso total! ${adsToProcess.length} anúncios transferidos.`, 'success');
 
       const formattedAds = adsToProcess.map((rawData, index) => {
-        const item = rawData.node || rawData.ad || rawData.data || rawData;
+        // Extrai o objeto real do anúncio, lidando com a estrutura aninhada "ad.snapshot" ou "ad"
+        const coreItem = rawData.node || rawData.ad?.snapshot || rawData.ad || rawData.data || rawData;
+        const rootItem = rawData; // Para dados que possam estar na raiz, como page_name
 
         // 1. Extração Inteligente do Anunciante
-        const advertiser = item.pageName || item.page_name || item.publisherPlatform || item.profileName || item.advertiser_name || "Anunciante Oculto";
+        const advertiser = coreItem.pageName || coreItem.page_name || rootItem.page_name || rootItem.pageName || coreItem.publisherPlatform || coreItem.profileName || coreItem.advertiser_name || "Anunciante Oculto";
         
         // 2. Extração Otimizada do Texto
-        let copyText = item.text || item.primaryText || item.message || item.body || item.caption || "";
-        if (!copyText && item.bodies && item.bodies.length > 0) copyText = item.bodies[0].text || item.bodies[0];
-        if (!copyText && item.adCreativeBodies && item.adCreativeBodies.length > 0) copyText = item.adCreativeBodies[0].text || item.adCreativeBodies[0];
+        let copyText = coreItem.text || coreItem.primaryText || coreItem.message || coreItem.body?.text || coreItem.body || coreItem.caption || rootItem.text || "";
+        if (!copyText && coreItem.bodies && coreItem.bodies.length > 0) copyText = coreItem.bodies[0].text || coreItem.bodies[0];
+        if (!copyText && coreItem.adCreativeBodies && coreItem.adCreativeBodies.length > 0) copyText = coreItem.adCreativeBodies[0].text || coreItem.adCreativeBodies[0];
         
         if (typeof copyText === 'object') copyText = JSON.stringify(copyText);
         if (!copyText || copyText.trim() === "") copyText = "Sem descrição disponível na biblioteca.";
 
         // 3. Extração do Título
-        let title = item.title || item.headline || "";
-        if (!title && item.titles && item.titles.length > 0) title = item.titles[0].text || item.titles[0];
-        if (!title && item.adCreativeLinkTitles && item.adCreativeLinkTitles.length > 0) title = item.adCreativeLinkTitles[0].text || item.adCreativeLinkTitles[0];
+        let title = coreItem.title || coreItem.headline || rootItem.title || "";
+        if (!title && coreItem.titles && coreItem.titles.length > 0) title = coreItem.titles[0].text || coreItem.titles[0];
+        if (!title && coreItem.adCreativeLinkTitles && coreItem.adCreativeLinkTitles.length > 0) title = coreItem.adCreativeLinkTitles[0].text || coreItem.adCreativeLinkTitles[0];
         
         if (!title && advertiser !== "Anunciante Oculto") title = `Anúncio de ${advertiser}`;
         if (!title || typeof title === 'object') title = "Oferta Encontrada";
 
         // 4. Extração de URL de Vídeo Real (Para reproduzir no cartão)
-        let videoUrl = item.video_url || item.videoUrl || item.videoHdUrl || null;
-        if (!videoUrl && item.media && item.media.video_url) videoUrl = item.media.video_url;
-        if (!videoUrl && item.videos && item.videos.length > 0) {
-            videoUrl = item.videos[0].video_url || item.videos[0].videoHdUrl || item.videos[0].videoSdUrl || item.videos[0].url || (typeof item.videos[0] === 'string' ? item.videos[0] : null);
+        let videoUrl = coreItem.video_url || coreItem.videoUrl || coreItem.videoHdUrl || rootItem.video_url || null;
+        if (!videoUrl && coreItem.media && coreItem.media.video_url) videoUrl = coreItem.media.video_url;
+        if (!videoUrl && coreItem.videos && coreItem.videos.length > 0) {
+            videoUrl = coreItem.videos[0].video_hd_url || coreItem.videos[0].video_sd_url || coreItem.videos[0].video_url || coreItem.videos[0].videoHdUrl || coreItem.videos[0].videoSdUrl || coreItem.videos[0].url || (typeof coreItem.videos[0] === 'string' ? coreItem.videos[0] : null);
+        }
+        if (!videoUrl && rootItem.media?.videos && rootItem.media.videos.length > 0) {
+            videoUrl = rootItem.media.videos[0].video_hd_url || rootItem.media.videos[0].video_sd_url;
         }
 
         // 5. Extração da Imagem / Thumbnail
         let mediaUrl = null;
-        if (item.media) {
-            mediaUrl = item.media.primary_thumbnail || item.media.video_preview_image_url || item.media.image_url || item.media.thumbnail_url;
-            if(!mediaUrl && item.media.images && item.media.images.length > 0) mediaUrl = item.media.images[0];
+        
+        // Verifica primeiro em rootItem.media
+        if (rootItem.media) {
+            mediaUrl = rootItem.media.primary_thumbnail || rootItem.media.video_preview_image_url || rootItem.media.image_url || rootItem.media.thumbnail_url;
         }
-        if (!mediaUrl && item.images && item.images.length > 0) {
-          mediaUrl = item.images[0].originalImageUrl || item.images[0].resizedImageUrls?.[0]?.url || item.images[0].url || (typeof item.images[0] === 'string' ? item.images[0] : null);
+        
+        if (!mediaUrl && coreItem.media) {
+            mediaUrl = coreItem.media.primary_thumbnail || coreItem.media.video_preview_image_url || coreItem.media.image_url || coreItem.media.thumbnail_url;
+            if(!mediaUrl && coreItem.media.images && coreItem.media.images.length > 0) mediaUrl = coreItem.media.images[0];
         }
-        if (!mediaUrl && item.snapshot && item.snapshot.images && item.snapshot.images.length > 0) {
-            mediaUrl = item.snapshot.images[0].url; 
+        if (!mediaUrl && coreItem.images && coreItem.images.length > 0) {
+          mediaUrl = coreItem.images[0].originalImageUrl || coreItem.images[0].resizedImageUrls?.[0]?.url || coreItem.images[0].url || (typeof coreItem.images[0] === 'string' ? coreItem.images[0] : null);
         }
-        if (!mediaUrl && item.adCreativeMedia && item.adCreativeMedia.length > 0) {
-          mediaUrl = item.adCreativeMedia[0].image_url || item.adCreativeMedia[0].imageUrl;
+        if (!mediaUrl && coreItem.snapshot && coreItem.snapshot.images && coreItem.snapshot.images.length > 0) {
+            mediaUrl = coreItem.snapshot.images[0].url; 
         }
-        if (!mediaUrl && item.videos && item.videos.length > 0) {
-          mediaUrl = item.videos[0].videoPreviewImageUrl || item.videos[0].previewUrl || item.videos[0].imageUrl || item.videos[0].coverUrl || (typeof item.videos[0] === 'string' ? item.videos[0] : null);
+        if (!mediaUrl && coreItem.adCreativeMedia && coreItem.adCreativeMedia.length > 0) {
+          mediaUrl = coreItem.adCreativeMedia[0].image_url || coreItem.adCreativeMedia[0].imageUrl;
         }
-        if (!mediaUrl) mediaUrl = item.image_url || item.imageUrl || item.thumbnailUrl || item.thumbnail_url || item.picture || item.image || item.cover_image;
+        if (!mediaUrl && coreItem.videos && coreItem.videos.length > 0) {
+          mediaUrl = coreItem.videos[0].video_preview_image_url || coreItem.videos[0].videoPreviewImageUrl || coreItem.videos[0].previewUrl || coreItem.videos[0].imageUrl || coreItem.videos[0].coverUrl || (typeof coreItem.videos[0] === 'string' ? coreItem.videos[0] : null);
+        }
+        if (!mediaUrl) mediaUrl = coreItem.image_url || coreItem.imageUrl || coreItem.thumbnailUrl || coreItem.thumbnail_url || coreItem.picture || coreItem.image || coreItem.cover_image || rootItem.page_profile_picture_url;
 
-        // Varrer código em busca de imagens como último recurso
-        if (!mediaUrl) {
-            const jsonStr = JSON.stringify(item);
-            const match = jsonStr.match(/https:\/\/[^"]+\.(jpg|jpeg|png|webp)/i);
-            if (match) mediaUrl = match[0];
+        // Varrer código em busca de imagens ou vídeos como último recurso
+        if (!mediaUrl || !videoUrl) {
+            const jsonStr = JSON.stringify(rawData);
+            if (!mediaUrl) {
+                const imgMatch = jsonStr.match(/https:\/\/[^"]+\.(jpg|jpeg|png|webp)/i);
+                if (imgMatch) mediaUrl = imgMatch[0];
+            }
+            if (!videoUrl) {
+                const vidMatch = jsonStr.match(/https:\/\/[^"]+\.mp4[^"]*/i);
+                if (vidMatch) videoUrl = vidMatch[0];
+            }
         }
 
         let isVideo = videoUrl ? true : false;
-        if (!isVideo && item.media && (item.media.type === 'video' || item.media.videos?.length > 0)) isVideo = true;
-        else if (item.media_type === 'video') isVideo = true;
-        else if (item.videos && item.videos.length > 0) isVideo = true;
-        else if (item.mediaType === 'video' || item.display_format === 'video') isVideo = true;
+        if (!isVideo && coreItem.media && (coreItem.media.type === 'video' || coreItem.media.videos?.length > 0)) isVideo = true;
+        else if (coreItem.media_type === 'video') isVideo = true;
+        else if (coreItem.videos && coreItem.videos.length > 0) isVideo = true;
+        else if (coreItem.mediaType === 'video' || coreItem.display_format === 'VIDEO') isVideo = true;
+        else if (rootItem.media?.type === 'video') isVideo = true;
 
         return {
           id: Date.now() + index,
@@ -265,8 +283,8 @@ export default function App() {
           advertiser: advertiser,
           copy: copyText,
           niche: "Geral",
-          platform: Array.isArray(item.publisherPlatforms) ? item.publisherPlatforms.join(', ') : item.platforms ? item.platforms.join(', ') : "Facebook",
-          likesCount: item.likeCount || item.page_likes || Math.floor(Math.random() * 800) + 100,
+          platform: Array.isArray(rootItem.platforms) ? rootItem.platforms.join(', ') : Array.isArray(coreItem.publisherPlatforms) ? coreItem.publisherPlatforms.join(', ') : coreItem.platforms ? coreItem.platforms.join(', ') : "Facebook",
+          likesCount: rootItem.page_likes || item.likeCount || item.page_likes || Math.floor(Math.random() * 800) + 100,
           status: "Validado",
           type: isVideo ? "Vídeo" : "Imagem",
           mediaUrl: mediaUrl,
@@ -419,7 +437,8 @@ export default function App() {
                       {ad.videoUrl ? (
                           <video 
                               src={ad.videoUrl} 
-                              muted loop autoPlay playsInline
+                              controls
+                              muted loop playsInline
                               referrerPolicy="no-referrer"
                               className="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-300 z-0"
                           />
@@ -437,11 +456,11 @@ export default function App() {
                       
                       {/* Fallback de Ícones e Badges */}
                       {ad.type === 'Vídeo' && !ad.videoUrl ? (
-                        <PlayCircle className="w-14 h-14 text-white/90 drop-shadow-xl z-10" />
+                        <PlayCircle className="w-14 h-14 text-white/90 drop-shadow-xl z-10 pointer-events-none" />
                       ) : (
-                        !ad.mediaUrl && !ad.videoUrl && <ImageIcon className="w-14 h-14 text-white/60 z-10" />
+                        !ad.mediaUrl && !ad.videoUrl && <ImageIcon className="w-14 h-14 text-white/60 z-10 pointer-events-none" />
                       )}
-                      <div className="absolute top-3 left-3 z-10"><PlatformBadge platform={ad.platform} /></div>
+                      <div className="absolute top-3 left-3 z-10 pointer-events-none"><PlatformBadge platform={ad.platform} /></div>
                     </div>
 
                     <div className="p-5 flex-1 flex flex-col">
