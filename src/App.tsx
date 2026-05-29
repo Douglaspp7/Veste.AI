@@ -37,7 +37,7 @@ export default function App() {
   const [systemLogs, setSystemLogs] = useState([]);
   const [showSettings, setShowSettings] = useState(false);
   const [apifyToken, setApifyToken] = useState('');
-  const [actorId, setActorId] = useState('3853UUZQG6pjjdw11'); // Atualizado para o novo robô por defeito
+  const [actorId, setActorId] = useState('dz_omar/facebook-ads-scraper-pro'); // Voltamos ao dz_omar por defeito
 
   const [selectedAd, setSelectedAd] = useState(null);
 
@@ -85,25 +85,24 @@ export default function App() {
       
       // Lógica de Adaptação Automática de Payload consoante o Actor escolhido
       if (safeActorId.includes('dz_omar')) {
+        // Formato para o dz_omar (garantindo que activeStatus está em MAIÚSCULAS)
         payload = {
           searchTerms: [miningKeyword.trim()],
-          countries: "BR",
+          countries: "BR", // Países agora é string e não array
           activeStatus: "ACTIVE" 
         };
       } else if (safeActorId.includes('3853UUZQG6pjjdw11') || safeActorId.includes('memo23')) {
-        // Formato específico para o actor "memo23 / Richest output"
         payload = {
           startUrls: [
             { url: `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=BR&q=${keywordEncoded}&search_type=keyword_exact_phrase` }
           ],
           proxyConfiguration: {
             useApifyProxy: true,
-            apifyProxyGroups: ["RESIDENTIAL"] // Tenta forçar proxy residencial para evitar bloqueios
+            apifyProxyGroups: ["RESIDENTIAL"] 
           },
-          maxItems: 30 // Limite de segurança
+          maxItems: 30 
         };
       } else {
-        // Formato Exigido pelo Robô Oficial da Apify "apify/facebook-ads-scraper"
         payload = {
           startUrls: [
             { url: `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=BR&q=${keywordEncoded}` }
@@ -187,7 +186,6 @@ export default function App() {
 
       addLog(`Sucesso total! ${validAds.length} anúncios transferidos.`, 'success');
 
-      // Mapeamento universal à prova de bala (suporta vários robôs)
       const formattedAds = validAds.map((rawData, index) => {
         const item = rawData.node || rawData.ad || rawData.data || rawData;
 
@@ -216,11 +214,10 @@ export default function App() {
         if (!title && advertiser !== "Anunciante Oculto") title = `Anúncio de ${advertiser}`;
         if (!title || typeof title === 'object') title = "Oferta Encontrada";
 
-        // 4. Extração de Imagem / Thumbnail (Adaptado para o Richest Output)
+        // 4. Extração de Imagem / Thumbnail
         let mediaUrl = null;
         
         if (item.media) {
-            // Verifica os campos específicos do novo actor "Richest Output"
             mediaUrl = item.media.primary_thumbnail || item.media.video_preview_image_url || item.media.image_url || item.media.thumbnail_url;
         }
 
@@ -463,7 +460,7 @@ export default function App() {
                       onChange={e => setActorId(e.target.value)} 
                       className="w-full bg-slate-950 border border-slate-700 p-4 rounded-xl text-slate-300 outline-none focus:border-green-500 transition-colors" 
                     />
-                    <p className="text-xs text-slate-500 mt-2">Usando: 3853UUZQG6pjjdw11 (Richest Output)</p>
+                    <p className="text-xs text-slate-500 mt-2">Recomendado: dz_omar/facebook-ads-scraper-pro</p>
                   </div>
                   <button onClick={handleSaveSettings} className="bg-green-600 hover:bg-green-500 px-8 py-3 rounded-xl text-white font-bold transition-colors mt-4">
                     Guardar Configurações
