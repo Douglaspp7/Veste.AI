@@ -62,7 +62,7 @@ export default function App() {
   const [miningKeyword, setMiningKeyword] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const [apifyToken, setApifyToken] = useState('');
-  const [actorId, setActorId] = useState('epctex/facebook-ads-scraper');
+  const [actorId, setActorId] = useState('dz_omar/facebook-ads-scraper-pro');
 
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState('Todos');
@@ -73,25 +73,29 @@ export default function App() {
   const [isRewriting, setIsRewriting] = useState(false);
   const [rewrittenText, setRewrittenText] = useState('');
 
-  // Carregar token guardado ao iniciar
+  // Carregar configurações locais
   useEffect(() => {
     try {
       const savedToken = localStorage.getItem('adsniper_apify_token');
+      const savedActor = localStorage.getItem('adsniper_apify_actor');
       if (savedToken) setApifyToken(savedToken);
+      if (savedActor) setActorId(savedActor);
     } catch (e) { }
   }, []);
 
   const handleSaveSettings = () => {
     try {
       localStorage.setItem('adsniper_apify_token', apifyToken);
+      localStorage.setItem('adsniper_apify_actor', actorId);
     } catch (e) { }
     setShowSettings(false);
-    alert('Configurações da Apify salvas!');
+    alert('Configurações da Apify guardadas!');
   };
 
+  // --- NOVA FUNÇÃO DE MINERAÇÃO DIRETA (SEM VERCEL TIMEOUT) ---
   const startMining = async () => {
     if (!apifyToken) {
-      alert("Por favor, configure o seu Token da Apify nas Configurações (menu lateral) primeiro.");
+      alert("Por favor, configure o seu Token da Apify nas Configurações (menu lateral).");
       return;
     }
     if (!miningKeyword) {
@@ -102,51 +106,95 @@ export default function App() {
     setIsMining(true);
     
     try {
-      // 1. CHAMA O NOSSO BACKEND SEGURO NA VERCEL (/api/minerar)
-      const response = await fetch('/api/minerar', {
+      console.log("A iniciar robô na Apify...");
+
+      // 1. Iniciar o robô diretamente
+      const runResponse = await fetch(`https://api.apify.com/v2/acts/${actorId}/runs?token=${apifyToken}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            keyword: miningKeyword,
-            apifyToken: apifyToken,
-            actorId: actorId
+            searchTerms: [miningKeyword],
+            countries: ["BR"],
+            activeStatus: "active" // Apenas anúncios ativos
         })
       });
 
-      if (!response.ok) throw new Error("Erro no servidor ao buscar dados.");
+      if (!runResponse.ok) {
+         const errorData = await runResponse.json();
+         console.error("Erro da Apify ao iniciar:", errorData);
+         throw new Error("Falha ao comunicar com a Apify. Verifique o seu Token.");
+      }
       
-      const rawAds = await response.json();
+      const runData = await runResponse.json();
+      const runId = runData.data.id;
+      const datasetId = runData.data.defaultDatasetId;
 
-      // 2. Formata os dados crus que vieram da API para o formato do nosso painel
-      const formattedAds = rawAds.map((item, index) => ({
-        id: 100 + index,
-        title: item.title || `Oferta: ${miningKeyword.toUpperCase()}`,
-        advertiser: item.pageName || "Página Desconhecida",
-        copy: item.body || item.title || "Sem descrição disponível.",
-        niche: "Geral", 
-        platform: item.publisherPlatform ? item.publisherPlatform[0] : "Facebook",
-        likes: item.likeCount ? `${(item.likeCount/1000).toFixed(1)}k` : "1.2k",
-        likesCount: item.likeCount || 1200,
-        comments: "150",
-        status: "Escalando",
-        type: item.isVideo ? "Vídeo" : "Imagem",
-        roi: "Alto",
-        color: "from-green-600 to-emerald-900",
-        date: "Ao Vivo",
-        checkout: "Desconhecido",
-        aiAnalysis: { 
-          persuasion: Math.floor(Math.random() * (98 - 70 + 1) + 70), 
-          retention: Math.floor(Math.random() * (95 - 60 + 1) + 60), 
-          cta: Math.floor(Math.random() * (99 - 75 + 1) + 75), 
-          appeal: "Curiosidade" 
+      console.log("Robô iniciado! ID da Tarefa:", runId);
+
+      // 2. Esperar que o robô termine (O Navegador aguarda o tempo que for preciso)
+      let isFinished = false;
+      while (!isFinished) {
+        await new Promise(r => setTimeout(r, 5000)); // Espera 5 segundos
+        
+        const statusRes = await fetch(`https://api.apify.com/v2/acts/${actorId}/runs/${runId}?token=${apifyToken}`);
+        const statusData = await statusRes.json();
+        
+        console.log("Estado da extração:", statusData.data.status); // Log no F12
+        
+        if (statusData.data.status === 'SUCCEEDED') {
+            isFinished = true;
+        } else if (statusData.data.status === 'FAILED' || statusData.data.status === 'ABORTED') {
+            throw new Error(`O robô na Apify falhou com o estado: ${statusData.data.status}`);
         }
-      }));
+      }
 
-      // Junta os anúncios reais aos nossos de teste
-      setAds([...formattedAds, ...MOCK_ADS]);
-      alert(`${formattedAds.length} anúncios reais minerados com sucesso!`);
+      // 3. Puxar os dados recolhidos
+      console.log("A puxar os dados...");
+      const datasetRes = await fetch(`https://api.apify.com/v2/datasets/${datasetId}/items?token=${apifyToken}`);
+      const rawAds = await datasetRes.json();
+
+      console.log("Dados crus recebidos:", rawAds);
+
+      // 4. Formatar os dados do scraper-pro para o nosso painel
+      const formattedAds = rawAds.map((item, index) => {
+        // Tenta encontrar a melhor cópia disponível
+        const copyText = item.body || item.primaryText || item.text || item.title || "Sem descrição disponível.";
+        
+        return {
+          id: 100 + index,
+          title: item.pageName || `Oferta: ${miningKeyword.toUpperCase()}`,
+          advertiser: item.pageName || "Página Desconhecida",
+          copy: copyText,
+          niche: "Geral", 
+          platform: item.publisherPlatforms ? item.publisherPlatforms.join(', ') : "Facebook",
+          likes: "1.2k", // A API nativa do fb costuma omitir likes
+          likesCount: 1200,
+          comments: "150",
+          status: "Escalando",
+          type: item.mediaType === 'video' ? "Vídeo" : "Imagem",
+          roi: "Alto",
+          color: "from-green-600 to-emerald-900",
+          date: "Ao Vivo",
+          checkout: item.ctaText || "Saiba Mais",
+          aiAnalysis: { 
+            persuasion: Math.floor(Math.random() * (98 - 70 + 1) + 70), 
+            retention: Math.floor(Math.random() * (95 - 60 + 1) + 60), 
+            cta: Math.floor(Math.random() * (99 - 75 + 1) + 75), 
+            appeal: "Curiosidade" 
+          }
+        };
+      });
+
+      if (formattedAds.length === 0) {
+          alert("O robô terminou, mas não encontrou anúncios para esta palavra.");
+      } else {
+          setAds([...formattedAds, ...MOCK_ADS]);
+          alert(`${formattedAds.length} anúncios reais minerados com sucesso!`);
+      }
+
     } catch (error) {
       alert(`Erro na mineração: ${error.message}`);
+      console.error(error);
     } finally {
       setIsMining(false);
     }
@@ -270,7 +318,7 @@ export default function App() {
                  <Zap className="w-5 h-5 text-green-500 mr-2" />
                  <input 
                    type="text" 
-                   placeholder="Digite uma palavra para MINERAR AGORA (ex: frete grátis, 50% off)" 
+                   placeholder="Digite uma palavra para MINERAR AGORA (ex: frete grátis)" 
                    className="w-full bg-transparent text-slate-200 py-3 focus:outline-none placeholder:text-slate-600 font-medium"
                    value={miningKeyword}
                    onChange={(e) => setMiningKeyword(e.target.value)}
@@ -295,7 +343,7 @@ export default function App() {
             /* CONFIGURAÇÕES TELA */
             <div className="max-w-2xl bg-slate-900 border border-slate-800 rounded-xl p-8">
               <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2"><Settings className="text-green-500"/> Integração Apify</h2>
-              <p className="text-slate-400 mb-6">Para extrair dados reais da Biblioteca de Anúncios, crie uma conta em apify.com e cole o seu Token de API abaixo.</p>
+              <p className="text-slate-400 mb-6">Para extrair dados reais da Biblioteca de Anúncios, cole o seu Token da Apify abaixo.</p>
               
               <div className="space-y-4">
                 <div>
@@ -316,7 +364,7 @@ export default function App() {
                     onChange={e => setActorId(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-slate-400"
                   />
-                  <p className="text-xs text-slate-500 mt-1">Padrão: epctex/facebook-ads-scraper</p>
+                  <p className="text-xs text-slate-500 mt-1">Recomendado: dz_omar/facebook-ads-scraper-pro</p>
                 </div>
                 <button onClick={handleSaveSettings} className="bg-green-600 text-white px-6 py-2 rounded-lg font-bold mt-4">Salvar Configurações</button>
               </div>
@@ -328,8 +376,8 @@ export default function App() {
                  <div className="mb-8 p-6 rounded-xl bg-green-500/10 border border-green-500/20 flex items-center gap-4 animate-pulse">
                     <Loader2 className="w-8 h-8 text-green-500 animate-spin" />
                     <div>
-                      <h3 className="text-green-400 font-bold text-lg">O AdSniper está a minerar anúncios reais...</h3>
-                      <p className="text-slate-400 text-sm">Estamos conectando aos servidores da Apify. Isto pode demorar até 1 minuto.</p>
+                      <h3 className="text-green-400 font-bold text-lg">A pesquisar na Meta Ad Library...</h3>
+                      <p className="text-slate-400 text-sm">Este processo pode demorar até 2 minutos. Não feche a janela.</p>
                     </div>
                  </div>
               )}
@@ -377,7 +425,7 @@ export default function App() {
         </main>
       </div>
 
-      {/* MODAL DETALHE (SIMPLIFICADO PARA O CODIGO CABER) */}
+      {/* MODAL DETALHE */}
       {selectedAd && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 backdrop-blur-sm bg-black/70">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-4xl flex flex-col shadow-2xl p-6">
@@ -385,7 +433,7 @@ export default function App() {
               <h2 className="font-bold text-2xl text-white">{selectedAd.advertiser}</h2>
               <button onClick={() => setSelectedAd(null)} className="text-slate-400 hover:text-white"><X className="w-6 h-6" /></button>
             </div>
-            <div className="bg-slate-800 p-4 rounded-lg mb-6">
+            <div className="bg-slate-800 p-4 rounded-lg mb-6 max-h-48 overflow-y-auto">
               <p className="text-slate-300 italic">"{selectedAd.copy}"</p>
             </div>
             <div className="grid grid-cols-3 gap-4 text-center">
