@@ -86,7 +86,7 @@ export default function App() {
       if (safeActorId.includes('dz_omar') || safeActorId.includes('20nRTxLD3a3jIlZbZ')) {
         payload = {
           searchQueries: [miningKeyword.trim()], 
-          countries: ["BR"],                     
+          countries: "BR",                       // CORREÇÃO DEFINITIVA: String em vez de Array, ignorando a documentação errada do criador.
           activeStatus: "ACTIVE",                
           adType: "ALL",                         
           maxResultsPerQuery: 30                 
@@ -203,7 +203,7 @@ export default function App() {
         // 1. Extração Inteligente do Anunciante
         const advertiser = item.pageName || item.page_name || item.publisherPlatform || item.profileName || item.advertiser_name || "Anunciante Oculto";
         
-        // 2. Extração Otimizada do Texto (Corrigida a falha de leitura)
+        // 2. Extração Otimizada do Texto
         let copyText = item.text || item.primaryText || item.message || item.body || item.caption || "";
         if (!copyText && item.bodies && item.bodies.length > 0) copyText = item.bodies[0].text || item.bodies[0];
         if (!copyText && item.adCreativeBodies && item.adCreativeBodies.length > 0) copyText = item.adCreativeBodies[0].text || item.adCreativeBodies[0];
