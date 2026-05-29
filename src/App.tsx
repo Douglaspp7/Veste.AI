@@ -84,12 +84,14 @@ export default function App() {
       const keywordEncoded = encodeURIComponent(miningKeyword.trim());
       
       // Lógica de Adaptação Automática de Payload consoante o Actor escolhido
-      if (safeActorId.includes('dz_omar')) {
-        // Formato para o dz_omar (garantindo que activeStatus está em MAIÚSCULAS)
+      if (safeActorId.includes('dz_omar') || safeActorId.includes('20nRTxLD3a3jIlZbZ')) {
+        // NOVO: Formato Exato conforme a documentação oficial do dz_omar/facebook-ads-scraper-pro
         payload = {
-          searchTerms: [miningKeyword.trim()],
-          countries: "BR", // Países agora é string e não array
-          activeStatus: "ACTIVE" 
+          searchQueries: [miningKeyword.trim()], // Documentação: "searchQueries" (não searchTerms)
+          countries: ["BR"],                     // Documentação: "countries" é array []
+          activeStatus: "ACTIVE",                // Obrigatório maiúsculas
+          adType: "ALL",                         // Filtro extra recomendado na doc
+          maxResultsPerQuery: 30                 // Documentação: "maxResultsPerQuery"
         };
       } else if (safeActorId.includes('3853UUZQG6pjjdw11') || safeActorId.includes('memo23')) {
         payload = {
@@ -178,15 +180,27 @@ export default function App() {
         throw new Error(`A Apify falhou ao ler a página: ${errDesc || "Erro bloqueado pelo Facebook"}`);
       }
 
-      const validAds = rawAds.filter(item => !item.error);
+      const validAds = rawAds.filter(item => !item.error && item.type !== 'summary' && item.type !== 'query_complete' && item.type !== 'complete'); // Filtra os logs do ndjson que o robô envia
 
       if (validAds.length === 0) {
-        throw new Error("Os resultados retornados pela Apify contêm apenas erros.");
+        throw new Error("Os resultados retornados pela Apify contêm apenas logs ou erros, nenhum anúncio válido.");
       }
 
-      addLog(`Sucesso total! ${validAds.length} anúncios transferidos.`, 'success');
+      // O robô do dz_omar pode envolver os anúncios num objeto "ads" dentro de um tipo "batch"
+      let adsToProcess = [];
+      validAds.forEach(item => {
+          if (item.type === 'batch' && item.ads && Array.isArray(item.ads)) {
+              adsToProcess = [...adsToProcess, ...item.ads];
+          } else if (!item.type || item.page_id) { // fallback
+              adsToProcess.push(item);
+          }
+      });
 
-      const formattedAds = validAds.map((rawData, index) => {
+      if (adsToProcess.length === 0) adsToProcess = validAds; // se falhar, tenta processar o array original
+
+      addLog(`Sucesso total! ${adsToProcess.length} anúncios transferidos.`, 'success');
+
+      const formattedAds = adsToProcess.map((rawData, index) => {
         const item = rawData.node || rawData.ad || rawData.data || rawData;
 
         // 1. Extração do Anunciante
@@ -219,6 +233,7 @@ export default function App() {
         
         if (item.media) {
             mediaUrl = item.media.primary_thumbnail || item.media.video_preview_image_url || item.media.image_url || item.media.thumbnail_url;
+            if(!mediaUrl && item.media.images && item.media.images.length > 0) mediaUrl = item.media.images[0];
         }
 
         if (!mediaUrl && item.images && item.images.length > 0) {
@@ -243,7 +258,7 @@ export default function App() {
 
         // 5. Determinar se é Vídeo ou Imagem
         let isVideo = false;
-        if (item.media && item.media.type === 'video') isVideo = true;
+        if (item.media && (item.media.type === 'video' || item.media.videos?.length > 0)) isVideo = true;
         else if (item.media_type === 'video') isVideo = true;
         else if (item.videos && item.videos.length > 0) isVideo = true;
         else if (item.video_url || item.videoUrl || item.videoHdUrl) isVideo = true;
