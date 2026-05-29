@@ -58,7 +58,7 @@ export default function App() {
   const [selectedAd, setSelectedAd] = useState(null);
 
   const addLog = (msg, type = 'info') => {
-    setSystemLogs(prev => [...prev.slice(-4), { msg, type, time: new Date().toLocaleTimeString() }]);
+    setSystemLogs(prev => [...prev.slice(-6), { msg, type, time: new Date().toLocaleTimeString() }]);
   };
 
   useEffect(() => {
@@ -111,13 +111,20 @@ export default function App() {
 
       if (!runResponse.ok) {
          if (runResponse.status === 403) {
-             throw new Error("Erro 403: Acesso Proibido. O seu token não tem permissão. Verifique se clicou em 'Try for free' no actor da Apify.");
+             throw new Error("Erro 403: Acesso Proibido. O seu token não tem permissão para usar este actor. Pode tentar mudar para 'apify/facebook-ads-scraper' nas configurações.");
          }
          const err = await runResponse.json();
-         throw new Error(err.error?.message || "Erro desconhecido ao iniciar a Apify.");
+         // Mostra a mensagem exata devolvida pela Apify, ou um erro genérico
+         throw new Error(`Erro ${runResponse.status}: ${err.error?.message || "Token inválido ou acesso negado."}`);
       }
       
       const runData = await runResponse.json();
+      
+      // Validação extra caso a Apify devolva um 200/201 mas o payload esteja vazio
+      if (!runData || !runData.data || !runData.data.id) {
+          throw new Error("A resposta da Apify foi bem-sucedida, mas não devolveu um ID de execução. Verifique as configurações.");
+      }
+
       const runId = runData.data.id;
       addLog(`Tarefa criada na Apify (ID: ${runId}). A aguardar resultados...`);
 
@@ -125,31 +132,37 @@ export default function App() {
       while (!finished) {
         await new Promise(r => setTimeout(r, 4000)); // Espera 4 segundos
         const statusRes = await fetch(`https://api.apify.com/v2/acts/${safeActorId}/runs/${runId}?token=${token}`);
+        
+        if (!statusRes.ok) {
+           addLog(`Aviso: Falha ao verificar o estado. Código: ${statusRes.status}`, 'warning');
+           continue; // Tenta na próxima iteração
+        }
+
         const statusData = await statusRes.json();
         
         if (statusData.data.status === 'SUCCEEDED') {
             finished = true;
-            addLog('Extração concluída com sucesso!');
+            addLog('Extração concluída na Apify!');
         } else if (['FAILED', 'ABORTED'].includes(statusData.data.status)) {
-            throw new Error(`O robô falhou na plataforma da Apify. Estado: ${statusData.data.status}`);
+            throw new Error(`O robô falhou na plataforma da Apify com o estado: ${statusData.data.status}. Verifique o seu saldo ou os limites da conta.`);
         } else {
-            // Apenas atualiza o log a cada 12 segundos para não encher a tela
-            if (Math.random() > 0.6) addLog(`Estado atual: ${statusData.data.status}... a trabalhar.`);
+            // Atualiza os logs para mostrar atividade
+            addLog(`Estado atual: ${statusData.data.status}... a recolher dados.`);
         }
       }
 
-      addLog('A transferir os anúncios encontrados...');
+      addLog('A transferir o ficheiro de anúncios encontrado...');
       const datasetRes = await fetch(`https://api.apify.com/v2/datasets/${runData.data.defaultDatasetId}/items?token=${token}`);
       const rawAds = await datasetRes.json();
       
       if (rawAds.length === 0) {
-        addLog('O robô terminou, mas não encontrou anúncios.', 'warning');
-        setMiningError("Nenhum anúncio encontrado para esta palavra-chave. Tente uma palavra diferente.");
+        addLog('A tarefa terminou, mas o robô não retornou dados (0 anúncios).', 'warning');
+        setMiningError("A mineração foi concluída, mas não foram encontrados anúncios ativos para esta palavra-chave no Brasil.");
         setIsMining(false);
         return;
       }
 
-      addLog(`Sucesso! ${rawAds.length} anúncios recebidos.`);
+      addLog(`Sucesso total! ${rawAds.length} anúncios transferidos.`, 'success');
 
       const formattedAds = rawAds.map((item, index) => {
         const copyText = item.body || item.primaryText || item.text || item.title || "Sem descrição disponível.";
@@ -176,12 +189,15 @@ export default function App() {
       setAds([...formattedAds, ...ads]);
 
     } catch (error) {
-      console.error(error);
-      const msg = error.message.includes('Failed to fetch') 
-        ? "Erro de Ligação (Failed to fetch): Por favor, desligue o AdBlocker para este site, pois ele bloqueia as palavras 'facebook-ads'." 
-        : error.message;
-      setMiningError(msg);
-      addLog(`ERRO: ${msg}`, 'error');
+      console.error("Erro detetado:", error);
+      let displayError = error.message;
+      
+      if (error.message.includes('Failed to fetch')) {
+        displayError = "Erro de Ligação: O navegador bloqueou o acesso à API. Desligue o seu bloqueador de anúncios (AdBlock) para o site 'api.apify.com'.";
+      }
+
+      setMiningError(displayError);
+      addLog(`ERRO: ${displayError}`, 'error');
     } finally {
       setIsMining(false);
     }
@@ -266,7 +282,7 @@ export default function App() {
 
               {miningError && (
                  <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/30 flex items-start gap-4">
-                    <AlertCircle className="w-6 h-6 text-red-500 shrink-0" />
+                    <AlertCircle className="w-6 h-6 text-red-500 shrink-0 mt-0.5" />
                     <div>
                       <h3 className="text-red-400 font-bold text-lg mb-1">Atenção Necessária</h3>
                       <p className="text-slate-300 text-sm leading-relaxed">{miningError}</p>
@@ -281,7 +297,7 @@ export default function App() {
                     </div>
                     <div className="space-y-1">
                       {systemLogs.map((log, i) => (
-                        <div key={i} className={`${log.type === 'error' ? 'text-red-400' : log.type === 'success' ? 'text-green-400' : 'text-slate-400'}`}>
+                        <div key={i} className={`${log.type === 'error' ? 'text-red-400' : log.type === 'success' ? 'text-green-400' : log.type === 'warning' ? 'text-yellow-400' : 'text-slate-400'}`}>
                           <span className="opacity-50 mr-2">[{log.time}]</span> {log.msg}
                         </div>
                       ))}
