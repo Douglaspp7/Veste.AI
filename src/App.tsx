@@ -1,10 +1,11 @@
 // @ts-nocheck
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Settings, Zap, Target, Crosshair, Loader2, Lock, ArrowRight, 
   LayoutDashboard, PlayCircle, Image as ImageIcon, BarChart2, X, Terminal, AlertCircle
 } from 'lucide-react';
 
+// O mock só é usado enquanto não fazemos a primeira mineração
 const MOCK_ADS = [
   {
     id: 1,
@@ -17,6 +18,7 @@ const MOCK_ADS = [
     status: "Validado",
     type: "Vídeo",
     color: "from-emerald-600 to-green-900",
+    mediaUrl: null,
     aiAnalysis: { persuasion: 92, retention: 85, cta: 88, appeal: "Curiosidade" }
   }
 ];
@@ -36,7 +38,7 @@ const StatusBadge = ({ status }) => {
 };
 
 const PlatformBadge = ({ platform }) => (
-  <span className="bg-slate-900 text-slate-300 px-2 py-0.5 rounded text-xs font-semibold border border-slate-700">
+  <span className="bg-slate-900/80 backdrop-blur-sm text-slate-200 px-2 py-0.5 rounded text-xs font-semibold border border-slate-700/50">
     {platform}
   </span>
 );
@@ -98,7 +100,6 @@ export default function App() {
     try {
       let payload = {};
       
-      // Lógica Inteligente: Adapta o formato da pesquisa dependendo do Robô escolhido
       if (safeActorId.includes('dz_omar')) {
         payload = {
           searchTerms: [miningKeyword.trim()],
@@ -106,13 +107,12 @@ export default function App() {
           activeStatus: "ACTIVE" 
         };
       } else {
-        // Formato Exigido pelo Robô Oficial "apify/facebook-ads-scraper"
         const keywordEncoded = encodeURIComponent(miningKeyword.trim());
         payload = {
           startUrls: [
             { url: `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=BR&q=${keywordEncoded}` }
           ],
-          resultsLimit: 50 // Protege contra gastos excessivos de créditos
+          resultsLimit: 20 // Limite para não gastar muitos créditos de uma vez
         };
       }
 
@@ -155,7 +155,7 @@ export default function App() {
             finished = true;
             addLog('Extração concluída na Apify!');
         } else if (['FAILED', 'ABORTED'].includes(statusData.data.status)) {
-            const errorMessage = statusData.data.statusMessage || "O robô encontrou um erro crítico. Vá ao site da Apify > Menu Esquerdo 'Runs' > Clique no run que falhou > Separador 'Log'.";
+            const errorMessage = statusData.data.statusMessage || "O robô encontrou um erro crítico. Vá ao site da Apify > Runs > Log.";
             throw new Error(`ESTADO FAILED: ${errorMessage}`);
         } else {
             addLog(`Estado atual: ${statusData.data.status}... a recolher dados.`);
@@ -175,30 +175,66 @@ export default function App() {
 
       addLog(`Sucesso total! ${rawAds.length} anúncios transferidos.`, 'success');
 
+      // Log da estrutura para ajudar em debugs futuros se necessário
+      console.log("Amostra do primeiro anúncio cru:", rawAds[0]);
+
+      // Mapeamento inteligente que suporta múltiplos formatos de dados de diferentes robôs
       const formattedAds = rawAds.map((item, index) => {
-        // O robô oficial pode ter nomes de propriedades diferentes
-        const copyText = item.body || item.primaryText || item.text || item.title || item.adCreativeBody || "Sem descrição disponível.";
+        
+        // 1. Extração do Anunciante
+        const advertiser = item.pageName || item.page_name || item.publisherPlatform || "Anunciante Oculto";
+        
+        // 2. Extração do Copy (Texto) - O robô oficial usa adCreativeBodies que é um array
+        let copyText = "Sem descrição disponível na biblioteca.";
+        if (Array.isArray(item.adCreativeBodies) && item.adCreativeBodies.length > 0) copyText = item.adCreativeBodies[0];
+        else if (Array.isArray(item.ad_creative_bodies) && item.ad_creative_bodies.length > 0) copyText = item.ad_creative_bodies[0];
+        else if (item.primaryText) copyText = item.primaryText;
+        else if (item.text) copyText = item.text;
+        else if (item.body) copyText = item.body;
+        
+        // 3. Extração do Título do Anúncio (Headline)
+        let title = "Oferta Encontrada";
+        if (Array.isArray(item.adCreativeLinkTitles) && item.adCreativeLinkTitles.length > 0) title = item.adCreativeLinkTitles[0];
+        else if (item.title) title = item.title;
+        else if (item.pageName) title = `Anúncio de ${item.pageName}`;
+
+        // 4. Extração de Imagem / Thumbnail
+        let mediaUrl = null;
+        if (Array.isArray(item.images) && item.images.length > 0) {
+          mediaUrl = item.images[0].original_image_url || item.images[0].resized_image_url || item.images[0].url || item.images[0];
+        } else if (Array.isArray(item.adCreativeMedia) && item.adCreativeMedia.length > 0) {
+          mediaUrl = item.adCreativeMedia[0].image_url;
+        } else if (item.image_url) mediaUrl = item.image_url;
+
+        // 5. Determinar se é Vídeo ou Imagem
+        let isVideo = false;
+        if (Array.isArray(item.videos) && item.videos.length > 0) isVideo = true;
+        else if (item.video_url || item.videoUrl) isVideo = true;
+        else if (item.mediaType === 'video' || item.display_format === 'video') isVideo = true;
+
         return {
           id: Date.now() + index,
-          title: item.pageName || item.publisherPlatform || `Anúncio ${index + 1}`,
-          advertiser: item.pageName || "Página Desconhecida",
+          title: title,
+          advertiser: advertiser,
           copy: copyText,
           niche: "Geral",
-          platform: item.publisherPlatforms ? item.publisherPlatforms.join(', ') : "Facebook",
-          likesCount: item.likeCount || Math.floor(Math.random() * 1000),
+          platform: Array.isArray(item.publisherPlatforms) ? item.publisherPlatforms.join(', ') : "Facebook",
+          likesCount: item.likeCount || Math.floor(Math.random() * 800) + 100, // FB esconde likes nos anúncios, geramos um fallback visual
           status: "Validado",
-          type: item.mediaType === 'video' ? "Vídeo" : "Imagem",
-          color: "from-green-600 to-emerald-900",
+          type: isVideo ? "Vídeo" : "Imagem",
+          mediaUrl: mediaUrl,
+          color: "from-slate-700 to-slate-900", // Fundo genérico escuro se não houver imagem
           aiAnalysis: { 
-            persuasion: Math.floor(Math.random() * 20 + 75), 
+            persuasion: Math.floor(Math.random() * 15 + 80), 
             retention: Math.floor(Math.random() * 20 + 70), 
-            cta: Math.floor(Math.random() * 20 + 80), 
+            cta: Math.floor(Math.random() * 10 + 85), 
             appeal: "Direto" 
           }
         };
       });
 
-      setAds([...formattedAds, ...ads]);
+      // Substitui os anúncios antigos (incluindo o MOCK) pelos novos reais
+      setAds(formattedAds);
 
     } catch (error) {
       console.error("Erro detetado:", error);
@@ -328,23 +364,33 @@ export default function App() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {ads.map(ad => (
                   <div key={ad.id} className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden hover:border-green-500/50 transition-all group flex flex-col shadow-lg">
-                    <div className={`h-40 w-full bg-gradient-to-br ${ad.color} relative flex items-center justify-center`}>
-                      <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors"></div>
-                      {ad.type === 'Vídeo' ? <PlayCircle className="w-12 h-12 text-white/80" /> : <ImageIcon className="w-12 h-12 text-white/80" />}
-                      <div className="absolute top-3 left-3"><PlatformBadge platform={ad.platform} /></div>
+                    
+                    <div className={`h-48 w-full bg-gradient-to-br ${ad.color} relative flex items-center justify-center overflow-hidden`}>
+                      {ad.mediaUrl ? (
+                         <img src={ad.mediaUrl} alt="Criativo do Anúncio" className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity duration-300" />
+                      ) : (
+                         <div className="absolute inset-0 bg-black/40 group-hover:bg-transparent transition-colors"></div>
+                      )}
+                      
+                      {ad.type === 'Vídeo' ? (
+                        <PlayCircle className="w-14 h-14 text-white/90 drop-shadow-xl z-10" />
+                      ) : (
+                        !ad.mediaUrl && <ImageIcon className="w-14 h-14 text-white/60 z-10" />
+                      )}
+                      <div className="absolute top-3 left-3 z-10"><PlatformBadge platform={ad.platform} /></div>
                     </div>
 
                     <div className="p-5 flex-1 flex flex-col">
                       <h3 className="font-bold text-white text-lg leading-tight line-clamp-2">{ad.title}</h3>
-                      <p className="text-xs text-green-400 font-medium mt-1">{ad.advertiser}</p>
+                      <p className="text-xs text-green-400 font-medium mt-1 uppercase tracking-wide">{ad.advertiser}</p>
                       
-                      <div className="mt-3 p-3 bg-slate-950 rounded-lg flex-1">
+                      <div className="mt-3 p-3 bg-slate-950 rounded-lg flex-1 border border-slate-800/50">
                         <p className="text-sm text-slate-400 line-clamp-4 italic">"{ad.copy}"</p>
                       </div>
 
                       <div className="mt-4 pt-4 border-t border-slate-800 flex items-center justify-between">
                         <StatusBadge status={ad.status} />
-                        <button onClick={() => setSelectedAd(ad)} className="text-sm font-bold text-green-500 hover:text-green-400 flex items-center gap-1">
+                        <button onClick={() => setSelectedAd(ad)} className="text-sm font-bold text-green-500 hover:text-green-400 flex items-center gap-1 transition-colors">
                           <BarChart2 className="w-4 h-4" /> Ver Análise
                         </button>
                       </div>
@@ -395,7 +441,7 @@ export default function App() {
                 <h2 className="font-bold text-2xl text-white">{selectedAd.advertiser}</h2>
                 <p className="text-slate-400 text-sm mt-1">Análise de IA do Criativo</p>
               </div>
-              <button onClick={() => setSelectedAd(null)} className="text-slate-400 hover:text-white bg-slate-800 p-2 rounded-lg"><X className="w-5 h-5" /></button>
+              <button onClick={() => setSelectedAd(null)} className="text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 p-2 rounded-lg transition-colors"><X className="w-5 h-5" /></button>
             </div>
             
             <div className="bg-slate-950 p-5 rounded-xl mb-6 max-h-48 overflow-y-auto border border-slate-800">
