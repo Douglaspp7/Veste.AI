@@ -158,7 +158,12 @@ export default function App() {
 
       // Deteta se a Apify enviou um objeto de Erro mascarado de anúncio
       if (rawAds.length > 0 && rawAds[0].error) {
-        throw new Error(`A Apify falhou ao ler a página: ${rawAds[0].errorDescription || "Erro bloqueado pelo Facebook"}`);
+        const errDesc = rawAds[0].errorDescription || "";
+        // Mensagem específica para o bloqueio do Facebook
+        if (errDesc.includes("Empty or private data")) {
+             throw new Error("Bloqueio Anti-Robô do Facebook! O Facebook detetou o servidor gratuito da Apify e bloqueou o acesso à página. Para minerar dados reais do Facebook com estabilidade, é necessário configurar 'Proxies Residenciais' pagos na sua conta Apify.");
+        }
+        throw new Error(`A Apify falhou ao ler a página: ${errDesc || "Erro bloqueado pelo Facebook"}`);
       }
 
       const validAds = rawAds.filter(item => !item.error);
