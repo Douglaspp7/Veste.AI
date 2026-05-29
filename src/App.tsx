@@ -4,7 +4,7 @@ import {
   Search, Filter, Heart, LayoutDashboard, Settings, ThumbsUp, MessageCircle,
   ExternalLink, PlayCircle, X, BarChart2, CheckCircle2, Menu, Download, Target,
   Zap, Image as ImageIcon, Copy, TrendingUp, Sparkles, ShoppingCart, ArrowDownWideNarrow,
-  Crosshair, Lock, ArrowRight, Loader2, AlertCircle
+  Crosshair, Lock, ArrowRight, Loader2, AlertCircle, Terminal
 } from 'lucide-react';
 
 const MOCK_ADS = [
@@ -27,9 +27,6 @@ const MOCK_ADS = [
     aiAnalysis: { persuasion: 92, retention: 85, cta: 88, appeal: "Curiosidade" }
   }
 ];
-
-const CATEGORIES = ["Todos", "Saúde", "Renda Extra", "E-commerce", "Beleza", "Marketing"];
-const PLATFORMS = ["Todas", "Facebook", "Instagram", "TikTok", "Google", "Native"];
 
 const StatusBadge = ({ status }) => {
   const colors = {
@@ -56,11 +53,11 @@ export default function App() {
   const [passwordInput, setPasswordInput] = useState('');
   const [loginError, setLoginError] = useState(false);
 
-  // Estados de Mineração
   const [ads, setAds] = useState(MOCK_ADS);
   const [isMining, setIsMining] = useState(false);
   const [miningKeyword, setMiningKeyword] = useState('');
-  const [miningError, setMiningError] = useState(''); // Novo estado para erros visuais
+  const [miningError, setMiningError] = useState('');
+  const [systemLogs, setSystemLogs] = useState([]);
   const [showSettings, setShowSettings] = useState(false);
   const [apifyToken, setApifyToken] = useState('');
   const [actorId, setActorId] = useState('dz_omar/facebook-ads-scraper-pro');
@@ -71,409 +68,170 @@ export default function App() {
   const [sortBy, setSortBy] = useState('Recentes');
   const [selectedAd, setSelectedAd] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [isRewriting, setIsRewriting] = useState(false);
-  const [rewrittenText, setRewrittenText] = useState('');
 
-  // Carregar configurações locais
+  const addLog = (msg, type = 'info') => {
+    setSystemLogs(prev => [...prev.slice(-4), { msg, type, time: new Date().toLocaleTimeString() }]);
+  };
+
   useEffect(() => {
-    try {
-      const savedToken = localStorage.getItem('adsniper_apify_token');
-      const savedActor = localStorage.getItem('adsniper_apify_actor');
-      if (savedToken) setApifyToken(savedToken);
-      if (savedActor) setActorId(savedActor);
-    } catch (e) { }
+    const savedToken = localStorage.getItem('adsniper_apify_token');
+    const savedActor = localStorage.getItem('adsniper_apify_actor');
+    if (savedToken) setApifyToken(savedToken);
+    if (savedActor) setActorId(savedActor);
   }, []);
 
   const handleSaveSettings = () => {
-    try {
-      localStorage.setItem('adsniper_apify_token', apifyToken.trim());
-      localStorage.setItem('adsniper_apify_actor', actorId.trim());
-    } catch (e) { }
+    localStorage.setItem('adsniper_apify_token', apifyToken.trim());
+    localStorage.setItem('adsniper_apify_actor', actorId.trim());
     setShowSettings(false);
-    alert('Configurações da Apify guardadas com sucesso!');
+    addLog('Configurações guardadas com sucesso.');
   };
 
   const startMining = async () => {
-    setMiningError(''); // Limpa erros anteriores
+    setMiningError('');
+    setSystemLogs([]);
     const token = apifyToken.trim();
     const actor = actorId.trim();
 
     if (!token) {
-      setMiningError("Por favor, configure o seu Token da Apify nas Configurações (menu lateral).");
-      return;
-    }
-    if (!miningKeyword.trim()) {
-      setMiningError("Digite uma palavra-chave válida para minerar!");
+      setMiningError("Configure o seu Token da Apify nas Configurações.");
       return;
     }
 
     setIsMining(true);
-    
-    // CORREÇÃO CRÍTICA: A Apify exige que as barras '/' nos IDs sejam substituídas por '~'
+    addLog('A iniciar ligação com a API da Apify...');
+
     const safeActorId = actor.replace('/', '~');
     
     try {
-      console.log("A iniciar robô na Apify com o ID seguro:", safeActorId);
-
-      // 1. Iniciar o robô diretamente
       const runResponse = await fetch(`https://api.apify.com/v2/acts/${safeActorId}/runs?token=${token}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            searchTerms: [miningKeyword.trim()],
-            countries: ["BR"],
-            activeStatus: "active" // Apenas anúncios ativos
-        })
+        body: JSON.stringify({ searchTerms: [miningKeyword.trim()], countries: ["BR"] })
       });
 
       if (!runResponse.ok) {
-         const errorData = await runResponse.json();
-         console.error("Erro da Apify ao iniciar:", errorData);
-         throw new Error(errorData.error?.message || "Falha ao comunicar com a Apify. Verifique o seu Token.");
+         const err = await runResponse.json();
+         throw new Error(err.error?.message || "Token inválido ou acesso negado.");
       }
       
       const runData = await runResponse.json();
       const runId = runData.data.id;
-      const datasetId = runData.data.defaultDatasetId;
+      addLog(`Tarefa criada (ID: ${runId}). A aguardar resultados...`);
 
-      console.log("Robô iniciado! ID da Tarefa:", runId);
-
-      // 2. Esperar que o robô termine
-      let isFinished = false;
-      while (!isFinished) {
-        await new Promise(r => setTimeout(r, 5000)); // Espera 5 segundos
-        
+      let finished = false;
+      while (!finished) {
+        await new Promise(r => setTimeout(r, 3000));
         const statusRes = await fetch(`https://api.apify.com/v2/acts/${safeActorId}/runs/${runId}?token=${token}`);
         const statusData = await statusRes.json();
         
-        console.log("Estado da extração:", statusData.data.status); 
-        
         if (statusData.data.status === 'SUCCEEDED') {
-            isFinished = true;
-        } else if (statusData.data.status === 'FAILED' || statusData.data.status === 'ABORTED') {
-            throw new Error(`O robô na Apify falhou. Motivo: Erro interno no Scraper da Apify.`);
+            finished = true;
+            addLog('Extração concluída com sucesso!');
+        } else if (['FAILED', 'ABORTED'].includes(statusData.data.status)) {
+            throw new Error(`O robô falhou: ${statusData.data.status}`);
         }
       }
 
-      // 3. Puxar os dados recolhidos
-      console.log("A puxar os dados...");
-      const datasetRes = await fetch(`https://api.apify.com/v2/datasets/${datasetId}/items?token=${token}`);
+      const datasetRes = await fetch(`https://api.apify.com/v2/datasets/${runData.data.defaultDatasetId}/items?token=${token}`);
       const rawAds = await datasetRes.json();
+      addLog(`Recebidos ${rawAds.length} anúncios.`);
 
-      console.log("Dados crus recebidos:", rawAds);
+      const formattedAds = rawAds.map((item, index) => ({
+        id: Date.now() + index,
+        title: item.pageName || "Anúncio Externo",
+        advertiser: item.pageName || "Página Desconhecida",
+        copy: item.body || item.primaryText || "Sem descrição.",
+        niche: "Geral",
+        platform: "Facebook",
+        likesCount: 0,
+        status: "Validado",
+        type: "Imagem",
+        color: "from-green-600 to-emerald-900",
+        aiAnalysis: { persuasion: 85, retention: 80, cta: 90, appeal: "Direto" }
+      }));
 
-      // 4. Formatar os dados do scraper-pro para o nosso painel
-      const formattedAds = rawAds.map((item, index) => {
-        const copyText = item.body || item.primaryText || item.text || item.title || "Sem descrição disponível.";
-        
-        return {
-          id: Date.now() + index,
-          title: item.pageName || `Oferta: ${miningKeyword.toUpperCase()}`,
-          advertiser: item.pageName || "Página Desconhecida",
-          copy: copyText,
-          niche: "Geral", 
-          platform: item.publisherPlatforms ? item.publisherPlatforms.join(', ') : "Facebook",
-          likes: "1.2k", 
-          likesCount: 1200,
-          comments: "150",
-          status: "Escalando",
-          type: item.mediaType === 'video' ? "Vídeo" : "Imagem",
-          roi: "Alto",
-          color: "from-green-600 to-emerald-900",
-          date: "Ao Vivo",
-          checkout: item.ctaText || "Saiba Mais",
-          aiAnalysis: { 
-            persuasion: Math.floor(Math.random() * (98 - 70 + 1) + 70), 
-            retention: Math.floor(Math.random() * (95 - 60 + 1) + 60), 
-            cta: Math.floor(Math.random() * (99 - 75 + 1) + 75), 
-            appeal: "Curiosidade" 
-          }
-        };
-      });
-
-      if (formattedAds.length === 0) {
-          setMiningError("A pesquisa terminou, mas a Apify não encontrou nenhum anúncio para esta palavra-chave.");
-      } else {
-          setAds([...formattedAds, ...ads]);
-          // Não usar alert, o utilizador vê os cards na tela
-      }
+      setAds([...formattedAds, ...ads]);
 
     } catch (error) {
-      console.error("ERRO COMPLETO:", error);
-      if (error.message.includes('Failed to fetch')) {
-        setMiningError("LIGAÇÃO BLOQUEADA: O seu navegador impediu a ligação. Isto acontece porque tem uma extensão de AdBlock ativa (veja o ícone de Stop/Escudo no canto superior direito do seu ecrã). Por favor, pause o AdBlock para este site e tente novamente.");
-      } else {
-        setMiningError(`Erro na mineração: ${error.message}`);
-      }
+      console.error(error);
+      const msg = error.message.includes('Failed to fetch') 
+        ? "Erro de Ligação: Verifique se não tem um AdBlock ativo ou firewall bloqueando a API." 
+        : error.message;
+      setMiningError(msg);
+      addLog(`Erro crítico: ${msg}`, 'error');
     } finally {
       setIsMining(false);
     }
   };
 
-  const handleLogin = (e) => {
-    e.preventDefault();
-    if (passwordInput === 'sniper2026') {
-      setIsAuthenticated(true);
-      setLoginError(false);
-    } else {
-      setLoginError(true);
-    }
-  };
-
-  const handleOpenAd = (ad) => {
-    setSelectedAd(ad);
-    setRewrittenText('');
-    setIsRewriting(false);
-  };
-
-  const handleRewriteCopy = () => {
-    if (!selectedAd) return;
-    setIsRewriting(true);
-    setTimeout(() => {
-      setRewrittenText(`🎯 [MÉTODO INÉDITO] ${selectedAd.copy.replace('Descubra', 'Revele').replace('Novo', 'Inédito').replace('Esqueça', 'Abandone')}\n\n👉 Toque em saiba mais e não perca essa chance exclusiva!`);
-      setIsRewriting(false);
-    }, 1500);
-  };
-
-  const filteredAds = useMemo(() => {
-    let result = ads.filter(ad => {
-      const matchSearch = ad.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          ad.advertiser.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          ad.copy.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchCategory = activeCategory === 'Todos' || ad.niche === activeCategory;
-      const matchPlatform = activePlatform === 'Todas' || ad.platform === activePlatform;
-      return matchSearch && matchCategory && matchPlatform;
-    });
-
-    if (sortBy === 'Mais Curtidos') result.sort((a, b) => b.likesCount - a.likesCount);
-    else if (sortBy === 'Recentes') result.sort((a, b) => b.id - a.id);
-
-    return result;
-  }, [ads, searchTerm, activeCategory, activePlatform, sortBy]);
-
-
-  // --- TELA DE LOGIN ---
   if (!isAuthenticated) {
     return (
-      <div className="flex h-screen w-full bg-slate-950 items-center justify-center p-4 selection:bg-green-500/30">
-        <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-2xl relative overflow-hidden">
-          <div className="absolute -top-24 -right-24 w-48 h-48 bg-green-500/10 rounded-full blur-3xl"></div>
-          <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl"></div>
-
-          <div className="relative z-10">
-            <div className="flex flex-col items-center mb-8">
-              <div className="w-16 h-16 bg-slate-950 border border-slate-800 rounded-2xl flex items-center justify-center mb-4 shadow-inner">
-                <Crosshair className="w-8 h-8 text-green-500" />
-              </div>
-              <h1 className="text-3xl font-bold text-white tracking-tight">Ad<span className="text-green-500">Sniper</span></h1>
-              <p className="text-slate-400 text-sm mt-2 text-center">Ambiente privado de espionagem. Senha: sniper2026</p>
-            </div>
-
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">Chave de Acesso</label>
-                <div className="relative">
-                  <Lock className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                  <input 
-                    type="password" 
-                    className="w-full bg-slate-950 border border-slate-800 focus:border-green-500 focus:ring-green-500 text-slate-200 rounded-lg pl-10 pr-4 py-3"
-                    value={passwordInput}
-                    onChange={(e) => setPasswordInput(e.target.value)}
-                  />
-                </div>
-                {loginError && <p className="text-red-400 text-xs mt-1.5">Senha incorreta.</p>}
-              </div>
-
-              <button type="submit" className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center gap-2">
-                Entrar no Radar <ArrowRight className="w-4 h-4" />
-              </button>
-            </form>
+      <div className="flex h-screen w-full bg-slate-950 items-center justify-center p-4">
+        <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-2xl">
+          <div className="flex flex-col items-center mb-8">
+            <Crosshair className="w-12 h-12 text-green-500 mb-4" />
+            <h1 className="text-3xl font-bold text-white">AdSniper</h1>
           </div>
+          <form onSubmit={(e) => { e.preventDefault(); if(passwordInput === 'sniper2026') setIsAuthenticated(true); else setLoginError(true); }} className="space-y-4">
+            <input type="password" placeholder="Chave de Acesso" className="w-full bg-slate-950 border border-slate-800 text-white rounded-lg p-3" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} />
+            {loginError && <p className="text-red-400 text-sm">Senha incorreta.</p>}
+            <button type="submit" className="w-full bg-green-600 text-white font-bold py-3 rounded-lg">Entrar</button>
+          </form>
         </div>
       </div>
     );
   }
 
-  // --- TELA PRINCIPAL ---
   return (
-    <div className="flex h-screen bg-slate-950 text-slate-200 font-sans overflow-hidden selection:bg-green-500/30">
-      
-      {/* SIDEBAR */}
-      <aside className={`fixed md:static inset-y-0 left-0 w-64 bg-slate-900 border-r border-slate-800 transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 transition-transform duration-300 ease-in-out z-50 flex flex-col`}>
-        <div className="p-6 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-green-500 font-bold text-2xl tracking-tight">
-            <Crosshair className="w-7 h-7 text-green-500" />
-            <span>Ad<span className="text-white">Sniper</span></span>
-          </div>
+    <div className="flex h-screen bg-slate-950 text-slate-200">
+      <aside className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col p-6">
+        <div className="flex items-center gap-2 text-green-500 font-bold text-xl mb-8">
+            <Crosshair /> <span>AdSniper</span>
         </div>
-
-        <nav className="flex-1 px-4 py-4 space-y-2">
-          <button onClick={() => setShowSettings(false)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-colors ${!showSettings ? 'bg-green-600/10 text-green-400 border border-green-500/20' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'}`}>
-            <LayoutDashboard className="w-5 h-5" /> Painel de Ofertas
-          </button>
-          <button onClick={() => setShowSettings(true)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-colors ${showSettings ? 'bg-green-600/10 text-green-400 border border-green-500/20' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'}`}>
-            <Settings className="w-5 h-5" /> Configurações (API)
-          </button>
+        <nav className="space-y-2 flex-1">
+          <button onClick={() => setShowSettings(false)} className="w-full text-left p-3 rounded-lg hover:bg-slate-800 flex items-center gap-2"><LayoutDashboard className="w-5"/> Painel</button>
+          <button onClick={() => setShowSettings(true)} className="w-full text-left p-3 rounded-lg hover:bg-slate-800 flex items-center gap-2"><Settings className="w-5"/> API</button>
         </nav>
       </aside>
 
-      {/* MAIN CONTENT */}
-      <div className="flex-1 flex flex-col h-screen overflow-hidden">
-        
-        {/* TOPBAR: Input para Minerar ao Vivo */}
-        <header className="h-20 flex items-center justify-between px-4 sm:px-6 lg:px-8 border-b border-slate-800 bg-slate-900/50 backdrop-blur-md sticky top-0 z-10">
-          <div className="flex-1 max-w-3xl flex items-center gap-4">
-             <div className="w-full flex items-center bg-slate-950 border border-green-500/30 rounded-xl p-1 shadow-inner focus-within:border-green-500 transition-colors">
-               <div className="flex-1 flex items-center pl-4">
-                 <Zap className="w-5 h-5 text-green-500 mr-2" />
-                 <input 
-                   type="text" 
-                   placeholder="Digite uma palavra para MINERAR AGORA (ex: frete grátis)" 
-                   className="w-full bg-transparent text-slate-200 py-3 focus:outline-none placeholder:text-slate-600 font-medium"
-                   value={miningKeyword}
-                   onChange={(e) => setMiningKeyword(e.target.value)}
-                   onKeyDown={(e) => e.key === 'Enter' && startMining()}
-                 />
-               </div>
-               <button 
-                 onClick={startMining}
-                 disabled={isMining}
-                 className="bg-green-600 hover:bg-green-500 text-white px-6 py-3 rounded-lg font-bold transition-colors shadow-lg shadow-green-600/20 flex items-center gap-2 disabled:opacity-50"
-               >
-                 {isMining ? <><Loader2 className="w-5 h-5 animate-spin" /> Minerando...</> : "Iniciar Radar"}
-               </button>
-             </div>
-          </div>
-        </header>
-
-        {/* DASHBOARD SCROLL AREA */}
-        <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6 lg:p-8">
-          
-          {/* MENSAGEM DE ERRO VISUAL */}
-          {miningError && (
-             <div className="mb-8 p-4 rounded-xl bg-red-500/10 border border-red-500/30 flex items-start gap-4 shadow-lg">
-                <AlertCircle className="w-6 h-6 text-red-500 shrink-0 mt-0.5" />
-                <div>
-                  <h3 className="text-red-400 font-bold text-lg mb-1">Atenção Necessária</h3>
-                  <p className="text-slate-300 text-sm leading-relaxed">{miningError}</p>
-                </div>
-             </div>
-          )}
-
-          {showSettings ? (
-            /* CONFIGURAÇÕES TELA */
-            <div className="max-w-2xl bg-slate-900 border border-slate-800 rounded-xl p-8">
-              <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2"><Settings className="text-green-500"/> Integração Apify</h2>
-              <p className="text-slate-400 mb-6">Para extrair dados reais da Biblioteca de Anúncios, cole o seu Token da Apify abaixo.</p>
-              
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm text-slate-300 mb-1">Apify API Token</label>
-                  <input 
-                    type="password" 
-                    value={apifyToken}
-                    onChange={e => setApifyToken(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:border-green-500"
-                    placeholder="apify_api_XXXXXXXXX..."
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-slate-300 mb-1">ID do Actor (Robô)</label>
-                  <input 
-                    type="text" 
-                    value={actorId}
-                    onChange={e => setActorId(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-slate-400"
-                  />
-                  <p className="text-xs text-slate-500 mt-1">Recomendado: dz_omar/facebook-ads-scraper-pro</p>
-                </div>
-                <button onClick={handleSaveSettings} className="bg-green-600 text-white px-6 py-2 rounded-lg font-bold mt-4">Salvar Configurações</button>
-              </div>
-            </div>
-          ) : (
-            /* GRID DE ANÚNCIOS */
+      <main className="flex-1 overflow-y-auto p-8">
+        {!showSettings ? (
             <>
-              {isMining && (
-                 <div className="mb-8 p-6 rounded-xl bg-green-500/10 border border-green-500/20 flex items-center gap-4 animate-pulse">
-                    <Loader2 className="w-8 h-8 text-green-500 animate-spin" />
-                    <div>
-                      <h3 className="text-green-400 font-bold text-lg">A pesquisar na Meta Ad Library...</h3>
-                      <p className="text-slate-400 text-sm">Este processo pode demorar até 2 minutos. Não feche a janela nem mude de separador.</p>
-                    </div>
-                 </div>
+              <div className="flex gap-4 mb-8">
+                <input className="flex-1 bg-slate-900 border border-slate-700 p-3 rounded-lg text-white" placeholder="Palavra-chave..." value={miningKeyword} onChange={e => setMiningKeyword(e.target.value)} />
+                <button onClick={startMining} disabled={isMining} className="bg-green-600 text-white px-6 py-3 rounded-lg font-bold flex items-center gap-2">
+                    {isMining ? <Loader2 className="animate-spin"/> : <Zap />} Iniciar Radar
+                </button>
+              </div>
+
+              {miningError && <div className="p-4 bg-red-900/20 border border-red-500/30 text-red-400 rounded-lg mb-6">{miningError}</div>}
+              
+              {systemLogs.length > 0 && (
+                <div className="mb-6 p-4 bg-slate-900 rounded-lg border border-slate-800 font-mono text-xs">
+                    <div className="flex items-center gap-2 mb-2 text-slate-500"><Terminal size={14}/> LOGS DO SISTEMA</div>
+                    {systemLogs.map((l, i) => <div key={i} className="text-slate-400">{`[${l.time}] ${l.msg}`}</div>)}
+                </div>
               )}
 
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 pb-12">
-                {filteredAds.map(ad => (
-                  <div key={ad.id} className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden hover:border-green-500/50 transition-all group flex flex-col shadow-lg shadow-black/20">
-                    
-                    {/* Media Placeholder */}
-                    <div className={`h-48 w-full bg-gradient-to-br ${ad.color} relative flex items-center justify-center overflow-hidden`}>
-                      <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors"></div>
-                      {ad.type === 'Vídeo' ? <PlayCircle className="w-16 h-16 text-white/80 drop-shadow-lg" /> : <ImageIcon className="w-16 h-16 text-white/80 drop-shadow-lg" />}
-                      <div className="absolute top-3 left-3 flex gap-2">
-                         <PlatformBadge platform={ad.platform} />
-                      </div>
-                    </div>
-
-                    {/* Content */}
-                    <div className="p-5 flex-1 flex flex-col">
-                      <div className="flex justify-between items-start mb-2">
-                        <div>
-                          <h3 className="font-bold text-slate-100 text-lg leading-tight truncate-multiline">{ad.title}</h3>
-                          <p className="text-xs text-green-400 font-medium mt-1">{ad.advertiser}</p>
-                        </div>
-                      </div>
-
-                      <p className="text-sm text-slate-400 line-clamp-3 mt-2 flex-1">"{ad.copy}"</p>
-
-                      <div className="mt-5 pt-4 border-t border-slate-700/50 flex items-center justify-between">
-                        <StatusBadge status={ad.status} />
-                      </div>
-
-                      <button 
-                        onClick={() => handleOpenAd(ad)}
-                        className="mt-4 w-full bg-slate-700 hover:bg-green-600 text-white font-medium py-2 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm"
-                      >
-                        <BarChart2 className="w-4 h-4" /> Analisar Criativo
-                      </button>
-                    </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {ads.map(ad => (
+                  <div key={ad.id} className="bg-slate-900 p-5 rounded-xl border border-slate-800 hover:border-green-500 transition-colors">
+                    <h3 className="font-bold text-white mb-2">{ad.title}</h3>
+                    <p className="text-sm text-slate-400 mb-4 line-clamp-3">"{ad.copy}"</p>
+                    <button onClick={() => setSelectedAd(ad)} className="text-green-500 text-sm font-bold border border-green-500/30 px-3 py-1 rounded">Analisar</button>
                   </div>
                 ))}
               </div>
             </>
-          )}
-        </main>
-      </div>
-
-      {/* MODAL DETALHE */}
-      {selectedAd && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 backdrop-blur-sm bg-black/70">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-4xl flex flex-col shadow-2xl p-6">
-            <div className="flex justify-between items-start mb-6">
-              <h2 className="font-bold text-2xl text-white">{selectedAd.advertiser}</h2>
-              <button onClick={() => setSelectedAd(null)} className="text-slate-400 hover:text-white"><X className="w-6 h-6" /></button>
+        ) : (
+            <div className="bg-slate-900 p-8 rounded-xl border border-slate-800 max-w-lg">
+                <h2 className="text-xl font-bold text-white mb-4">Configurações Apify</h2>
+                <input type="password" value={apifyToken} onChange={e => setApifyToken(e.target.value)} placeholder="Token..." className="w-full bg-slate-950 p-3 rounded mb-4" />
+                <button onClick={handleSaveSettings} className="bg-green-600 px-6 py-2 rounded text-white font-bold">Guardar</button>
             </div>
-            <div className="bg-slate-800 p-4 rounded-lg mb-6 max-h-48 overflow-y-auto">
-              <p className="text-slate-300 italic">"{selectedAd.copy}"</p>
-            </div>
-            <div className="grid grid-cols-3 gap-4 text-center">
-              <div className="bg-slate-800 p-4 rounded-lg">
-                <div className="text-green-500 font-bold text-xl">{selectedAd.aiAnalysis?.persuasion}%</div>
-                <div className="text-slate-400 text-xs uppercase">Persuasão</div>
-              </div>
-              <div className="bg-slate-800 p-4 rounded-lg">
-                <div className="text-green-500 font-bold text-xl">{selectedAd.aiAnalysis?.retention}%</div>
-                <div className="text-slate-400 text-xs uppercase">Retenção</div>
-              </div>
-              <div className="bg-slate-800 p-4 rounded-lg">
-                <div className="text-green-500 font-bold text-xl">{selectedAd.aiAnalysis?.cta}%</div>
-                <div className="text-slate-400 text-xs uppercase">Chamada de Ação</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+        )}
+      </main>
     </div>
   );
 }
