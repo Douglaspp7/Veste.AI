@@ -96,11 +96,11 @@ export default function App() {
     const safeActorId = actor.replace('/', '~');
     
     try {
-      // CORREÇÃO: "countries" agora é enviado como String "BR" em vez de Array ["BR"]
+      // CORREÇÃO: "activeStatus" agora é "ACTIVE" em letras maiúsculas
       const payload = {
         searchTerms: [miningKeyword.trim()],
         countries: "BR",
-        activeStatus: "active"
+        activeStatus: "ACTIVE" 
       };
 
       const runResponse = await fetch(`https://api.apify.com/v2/acts/${safeActorId}/runs?token=${token}`, {
