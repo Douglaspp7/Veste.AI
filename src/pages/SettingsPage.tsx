@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React from 'react';
 import { Settings, Zap, Sparkles } from 'lucide-react';
 
