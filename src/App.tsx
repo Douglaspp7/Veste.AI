@@ -72,24 +72,37 @@ export default function App() {
     addLog('Configurações guardadas com sucesso.', 'success');
   };
 
-  // Integração IA com Chave do Utilizador (Para funcionar no Vercel)
+  // Integração IA Otimizada para Vercel e Chaves Públicas
   const callGeminiWithRetry = async (prompt, token, retries = 5) => {
-    const apiKey = token || ""; // Usa a chave fornecida pelo utilizador ou a chave do ambiente de testes
+    const apiKey = token || ""; 
+    
+    // CORREÇÃO: Se for a chave pública do utilizador (Vercel), usa o modelo 1.5 Flash. 
+    // Se for no ambiente de testes Canvas (sem chave fornecida), usa o 2.5 Preview.
+    const model = apiKey ? "gemini-1.5-flash" : "gemini-2.5-flash-preview-09-2025";
+    const endpointUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    
     const delays = [1000, 2000, 4000, 8000, 16000];
     let attempt = 0;
+    
     while (attempt <= retries) {
         try {
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+            const response = await fetch(endpointUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
             });
+            
             if (!response.ok) {
-                const errData = await response.json();
-                throw new Error(errData.error?.message || "Erro na API da Gemini");
+                const errData = await response.json().catch(() => ({}));
+                throw new Error(errData.error?.message || `Erro ${response.status} no servidor do Google Gemini`);
             }
             return await response.json();
         } catch (err) {
+            // Tratamento específico para o erro de bloqueio (Failed to fetch)
+            if (err.message.includes('Failed to fetch')) {
+                throw new Error("Failed to fetch: O seu navegador ou AdBlocker bloqueou a comunicação com a API do Google. Por favor, desative o bloqueador de anúncios para este site e tente novamente.");
+            }
+            
             if (attempt === retries) throw new Error(`Falha na API da IA: ${err.message}`);
             await new Promise(r => setTimeout(r, delays[attempt]));
             attempt++;
@@ -98,7 +111,7 @@ export default function App() {
   };
 
   const analyzeAdWithAI = async (ad) => {
-    // Alerta caso a chave não esteja configurada (fundamental para o Vercel)
+    // Alerta caso a chave não esteja configurada no Vercel
     if (!geminiToken && window.location.hostname !== 'localhost' && !window.location.hostname.includes('google')) {
        alert("Configure a sua Chave API do Gemini nas Configurações para gerar as análises!");
        return;
@@ -295,21 +308,17 @@ Forneça um relatório direto contendo:
         // 4. Link de Destino Inteligente Avançado (Caça ao Cloaker/VSL)
         let targetUrl = coreItem.snapshot?.cards?.[0]?.link_url || coreItem.cards?.[0]?.link_url || coreItem.snapshot?.link_url || coreItem.link_url || rootItem.link_url || rootItem.ad_url || rootItem.page_url || "";
         
-        // Muitas vezes o link base é o Whatsapp ou a página do FB, vamos vasculhar o texto
         const urlRegex = /(https?:\/\/[^\s]+)/g;
         const linksInCopy = copyText.match(urlRegex) || [];
         
         if (linksInCopy.length > 0) {
-            // Priorizar links que NÃO sejam WhatsApp ou Facebook (tentar apanhar o VSL/Cloaker escondido na copy)
             const nonSocialLink = linksInCopy.find(l => !l.includes('wa.me') && !l.includes('whatsapp.com') && !l.includes('facebook.com') && !l.includes('fb.me'));
-            
             if (nonSocialLink) {
-                targetUrl = nonSocialLink; // Encontrou um link externo puro!
+                targetUrl = nonSocialLink; 
             } else if (!targetUrl || targetUrl.includes('facebook.com') || targetUrl.includes('fb.me')) {
-                targetUrl = linksInCopy[0]; // Fallback: Pega o primeiro link da copy (mesmo que seja whatsapp) se não houver link no botão
+                targetUrl = linksInCopy[0]; 
             }
         } else if (coreItem.caption && coreItem.caption.includes('.') && !coreItem.caption.includes(' ')) {
-            // Se não houver links na copy, tenta apanhar do caption (frequentemente o domínio da loja)
             if (!targetUrl || targetUrl.includes('facebook.com')) {
                 targetUrl = coreItem.caption.startsWith('http') ? coreItem.caption : `https://${coreItem.caption}`;
             }
