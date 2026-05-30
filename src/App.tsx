@@ -69,6 +69,9 @@ export default function App() {
   const [ads, setAds] = useState([]);
   const [savedAds, setSavedAds] = useState([]);
   
+  // Paginação (Infinite Scroll)
+  const [visibleAdsCount, setVisibleAdsCount] = useState(24);
+
   // Filtros e Ordenação
   const [minDaysFilter, setMinDaysFilter] = useState(0);
   const [mediaTypeFilter, setMediaTypeFilter] = useState('ALL');
@@ -127,6 +130,11 @@ export default function App() {
     localStorage.setItem('adsniper_vault', JSON.stringify(savedAds));
   }, [savedAds]);
 
+  // Sempre que os filtros ou a aba mudam, reseta o limite visual para 24
+  useEffect(() => {
+    setVisibleAdsCount(24);
+  }, [minDaysFilter, mediaTypeFilter, sortBy, activeTab, miningKeyword]);
+
   const handleSaveSettings = () => {
     localStorage.setItem('adsniper_apify_token', apifyToken.trim());
     localStorage.setItem('adsniper_apify_actor', actorId.trim());
@@ -156,6 +164,14 @@ export default function App() {
   };
 
   const isAdSaved = (id) => savedAds.some(ad => ad.id === id);
+
+  // Lógica do Infinite Scroll
+  const handleScroll = (e) => {
+    const bottom = e.target.scrollHeight - e.target.scrollTop <= e.target.clientHeight + 600; 
+    if (bottom) {
+      setVisibleAdsCount(prev => prev + 24);
+    }
+  };
 
   // IA Functions
   const callChatGPT = async (prompt, token) => {
@@ -233,6 +249,7 @@ export default function App() {
     setMiningError(''); 
     setSystemLogs([]); 
     setMinDaysFilter(0); 
+    setVisibleAdsCount(24);
     
     const token = apifyToken.trim(); 
     const actor = actorId.trim();
@@ -250,28 +267,29 @@ export default function App() {
     const safeActorId = actor.replace('/', '~');
     
     try {
+      // LIMITE AUMENTADO PARA 500: A interface agora suporta carga massiva via Infinite Scroll
       let payload = {
           searchQueries: [miningKeyword.trim()], 
           countries: "BR", activeStatus: "ACTIVE", adType: "ALL", 
-          maxResultsPerQuery: 150 
+          maxResultsPerQuery: 500 
       };
 
       if (safeActorId.includes('3853UUZQG6pjjdw11') || safeActorId.includes('memo23')) {
           payload = {
               startUrls: [{ url: `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=BR&q=${encodeURIComponent(miningKeyword.trim())}` }],
               proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ["RESIDENTIAL"] },
-              maxItems: 150
+              maxItems: 500
           };
       } else if (!safeActorId.includes('dz_omar')) {
           payload = {
               startUrls: [{ url: `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=BR&q=${encodeURIComponent(miningKeyword.trim())}` }],
-              resultsLimit: 150
+              resultsLimit: 500
           };
       }
 
       setMiningProgress(20);
       setMiningStatusMsg('A iniciar missão de espionagem no Meta...');
-      addLog(`Robô detetado: enviando pesquisa (Max: 150)...`);
+      addLog(`Robô detetado: enviando pesquisa (Max: 500)...`);
       
       const runResponse = await fetch(`https://api.apify.com/v2/acts/${safeActorId}/runs?token=${token}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
@@ -286,17 +304,18 @@ export default function App() {
       const runId = runData.data.id;
       
       setMiningProgress(30);
-      setMiningStatusMsg(`A extrair anúncios da Biblioteca...`);
+      setMiningStatusMsg(`A extrair anúncios em massa da Biblioteca...`);
       addLog(`Tarefa Apify criada (ID: ${runId}). A aguardar...`);
 
       let finished = false;
       let timeoutCounter = 0; 
 
-      while (!finished && timeoutCounter < 35) {
+      // Timeout aumentado para 60 loops (4 minutos) para permitir os 500 resultados
+      while (!finished && timeoutCounter < 60) {
         await new Promise(r => setTimeout(r, 4000));
         timeoutCounter++;
         
-        setMiningProgress(prev => Math.min(prev + Math.floor(Math.random() * 8) + 2, 85));
+        setMiningProgress(prev => Math.min(prev + Math.floor(Math.random() * 5) + 1, 85));
         
         const statusRes = await fetch(`https://api.apify.com/v2/acts/${safeActorId}/runs/${runId}?token=${token}`);
         if (!statusRes.ok) continue; 
@@ -311,7 +330,7 @@ export default function App() {
       }
 
       setMiningProgress(90);
-      setMiningStatusMsg('Extração concluída! A transferir os dados...');
+      setMiningStatusMsg('Extração concluída! A transferir os dados pesados...');
       addLog('A transferir ficheiro JSON de dados...');
       
       const datasetRes = await fetch(`https://api.apify.com/v2/datasets/${runData.data.defaultDatasetId}/items?token=${token}`);
@@ -430,8 +449,6 @@ export default function App() {
             let likesCount = rootItem.page_likes || coreItem.page_likes || Math.floor(Math.random() * 800) + 100;
             if (isNaN(likesCount)) likesCount = Math.floor(Math.random() * 800) + 100;
 
-            // ASSINATURA V3 (NÍVEL FUSION ADS): Agrupa TUDO pelo Anunciante.
-            // Isso garante que se encontrarmos 12 anúncios diferentes do "Aprenda Já", eles formam 1 só cartão.
             const signature = pageId ? `page_${pageId}` : `adv_${advertiser.trim().toLowerCase()}`;
 
             let safeRawData = "";
@@ -440,13 +457,11 @@ export default function App() {
             if (advertiserMap.has(signature)) {
                 const existingAd = advertiserMap.get(signature);
                 
-                // Mapeamento de IDs puros da Meta para soma impecável
                 if (!existingAd.archiveIds) existingAd.archiveIds = {};
                 if (!existingAd.archiveIds[adId] || countForThisArchive > existingAd.archiveIds[adId]) {
                     existingAd.archiveIds[adId] = countForThisArchive;
                 }
                 
-                // A grande mágica: Soma TOTAL de todos os anúncios encontrados desta Página!
                 existingAd.adCount = Object.values(existingAd.archiveIds).reduce((a, b) => a + b, 0);
 
                 if (daysActive > existingAd.daysActive) {
@@ -458,7 +473,6 @@ export default function App() {
                 const copyTrimmedForFallback = copyText.substring(0, 30).replace(/\s+/g, ' ').trim();
                 existingAd.allCopies.add(copyTrimmedForFallback);
                 
-                // SELETOR DO MELHOR CRIATIVO: Se for vídeo, ou se tiver mais peso (mais anúncios no mesmo ID), mostramos este
                 let shouldSwapCreative = false;
                 if (!existingAd.isVideo && isVideo) {
                     shouldSwapCreative = true;
@@ -517,25 +531,19 @@ export default function App() {
         }
       });
 
-      // MOTOR V3: Aplicar Scoring e Tags Especiais baseadas na Força Global da Página
       const formattedAds = Array.from(advertiserMap.values()).map(ad => {
           
-          // Deteção de Escala Vertical (Muitos anúncios lançados agora)
           const recentAdsCount = ad.allDates ? ad.allDates.filter(d => d <= 7).length : 0;
           ad.isAggressiveScale = recentAdsCount >= 3 && ad.adCount >= 5;
 
-          // Deteção de A/B Testing
           ad.isABTesting = ad.allCopies && ad.allCopies.size > 1 && ad.adCount >= 2;
 
-          // Deteção de Criativo Rei
           ad.isCreativeKing = ad.daysActive > 30 && ad.adCount >= 10;
 
-          // Deteção BlackHat
           const suspiciousDomains = ['linktr.ee', 'bit.ly', 'shorturl', 'hotm.art', 'go.hotmart', 'monetizze', 'kiwify.com', 'perfectpay'];
           ad.isBlackHat = suspiciousDomains.some(d => ad.targetUrl.toLowerCase().includes(d)) || (getBaseDomain(ad.targetUrl).length > 25);
 
-          // SCORING V3
-          // O teto de volume subiu para 30 (como agrupamos por página, os volumes serão bem maiores)
+          // SCORING V3 (O teto de volume subiu para 30)
           const adScoreCalc = Math.min((ad.adCount / 30) * 50, 50); 
           const daysScoreCalc = Math.min((ad.daysActive / 60) * 30, 30);
           const platformScoreCalc = Math.min((ad.platformCount / 4) * 20, 20);
@@ -606,6 +614,10 @@ export default function App() {
   }
   const maxDaysAvailable = calcMaxDays;
 
+  // Renderização final com Infinite Scroll Aplicado
+  const allDisplayedAds = getDisplayedAds();
+  const adsToRender = allDisplayedAds.slice(0, visibleAdsCount);
+
   if (!isAuthenticated) {
     return (
       <div className="flex h-screen w-full bg-slate-950 items-center justify-center p-4">
@@ -650,7 +662,7 @@ export default function App() {
         </nav>
       </aside>
 
-      <main className="flex-1 overflow-y-auto p-4 md:p-8 relative">
+      <main className="flex-1 overflow-y-auto p-4 md:p-8 relative" onScroll={handleScroll}>
         {activeTab !== 'settings' ? (
             <div className="max-w-7xl mx-auto">
               
@@ -745,9 +757,9 @@ export default function App() {
                  </div>
               )}
 
-              {/* GRELHA DE ANÚNCIOS (Design Fusion Elite) */}
+              {/* GRELHA DE ANÚNCIOS COM INFINITE SCROLL */}
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                {getDisplayedAds().map(ad => (
+                {adsToRender.map(ad => (
                   <div key={ad.id} onClick={() => setSelectedAd(ad)} className="bg-slate-900 rounded-3xl border border-slate-800 overflow-hidden hover:border-green-500/50 hover:shadow-green-900/20 hover:shadow-2xl transition-all cursor-pointer flex flex-col group relative">
                     
                     {/* Header: Avatar + Nome */}
@@ -781,7 +793,7 @@ export default function App() {
                         </div>
                     </div>
 
-                    {/* Media Container (Compacto) SEM AUTOPLAY (Previne a Tela Branca!) */}
+                    {/* Media Container (Compacto) SEM AUTOPLAY */}
                     <div className={`h-48 w-full bg-slate-950 relative flex items-center justify-center overflow-hidden border-b border-slate-800`}>
                       {ad.videoUrl ? (
                           <video 
@@ -858,6 +870,13 @@ export default function App() {
                   </div>
                 ))}
               </div>
+              
+              {/* Spinner de Loading do Scroll Infinito */}
+              {visibleAdsCount < allDisplayedAds.length && (
+                  <div className="w-full flex justify-center items-center py-10 opacity-50">
+                      <Loader2 className="w-8 h-8 text-green-500 animate-spin" />
+                  </div>
+              )}
             </div>
         ) : (
             <div className="max-w-2xl bg-slate-900 border border-slate-800 rounded-xl p-8 shadow-xl">
