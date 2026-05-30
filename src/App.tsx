@@ -299,12 +299,7 @@ export default function App() {
 
       addLog(`A processar e agrupar ${adsToProcess.length} anúncios...`, 'success');
 
-      const cleanUrl = (url) => {
-          if (!url) return 'no-media';
-          try { return url.split('?')[0]; } catch(e) { return 'no-media'; }
-      };
-
-      // MAPA DE AGRUPAMENTO (Deduplicação Inteligente com soma de IDs)
+      // MAPA DE AGRUPAMENTO SUPER INTELIGENTE (Agrupa pelo Produto/Funil)
       const adsMap = new Map();
 
       adsToProcess.forEach((rawData, index) => {
@@ -384,11 +379,22 @@ export default function App() {
             let likesCount = rootItem.page_likes || coreItem.page_likes || Math.floor(Math.random() * 800) + 100;
             if (isNaN(likesCount)) likesCount = Math.floor(Math.random() * 800) + 100;
 
-            const copyTrimmed = copyText.substring(0, 40).replace(/\s+/g, ' ').trim();
-            const signature = `${advertiser}_${copyTrimmed}_${cleanUrl(mediaUrl || videoUrl)}`;
+            // NOVO: Agrupamento Inteligente focado no LINK (Produto) em vez da imagem exata
+            let cleanTarget = 'no-link';
+            if (targetUrl && !targetUrl.includes('facebook.com')) {
+                try {
+                    const urlObj = new URL(targetUrl);
+                    cleanTarget = urlObj.hostname + urlObj.pathname;
+                } catch(e) {
+                    cleanTarget = targetUrl.split('?')[0];
+                }
+            }
+            
+            const copyTrimmed = copyText.substring(0, 30).replace(/\s+/g, ' ').trim();
+            // A assinatura agora une todas as variações de vídeo/copy que mandam para a MESMA página de vendas!
+            const signature = `${advertiser}_${cleanTarget !== 'no-link' ? cleanTarget : copyTrimmed}`;
 
             if (adsMap.has(signature)) {
-                // SOMA INTELIGENTE DE IDS (Impede duplicação, mas soma IDs únicos)
                 const existingAd = adsMap.get(signature);
                 
                 if (!existingAd.archiveIds) existingAd.archiveIds = {};
@@ -397,11 +403,20 @@ export default function App() {
                     existingAd.archiveIds[adId] = countForThisArchive;
                 }
                 
-                // Recalcula o total exato
+                // Recalcula o total de anúncios exato para este Funil
                 existingAd.adCount = Object.values(existingAd.archiveIds).reduce((a, b) => a + b, 0);
 
                 if (daysActive > existingAd.daysActive) {
                     existingAd.daysActive = daysActive;
+                }
+                
+                // Atualiza o criativo visual para o mais forte (Vídeo ganha sobre imagem)
+                if (isVideo && !existingAd.isVideo) {
+                    existingAd.videoUrl = videoUrl;
+                    existingAd.mediaUrl = mediaUrl;
+                    existingAd.type = "Vídeo";
+                    existingAd.formatType = formatType;
+                    existingAd.isVideo = true;
                 }
             } else {
                 const initialArchiveIds = {};
@@ -418,7 +433,7 @@ export default function App() {
                   daysActive: daysActive,
                   ticketPrice: ticketPrice,
                   adCount: countForThisArchive, 
-                  archiveIds: initialArchiveIds, // Armazena os IDs do Meta para garantir precisão
+                  archiveIds: initialArchiveIds, 
                   niche: niche,
                   formatType: formatType,
                   platformCount: platformsRaw.length,
@@ -426,6 +441,7 @@ export default function App() {
                   likesCount: likesCount,
                   status: "Teste",
                   type: isVideo ? "Vídeo" : "Imagem",
+                  isVideo: isVideo,
                   mediaUrl: mediaUrl,
                   videoUrl: videoUrl,
                   color: "from-slate-700 to-slate-900",
