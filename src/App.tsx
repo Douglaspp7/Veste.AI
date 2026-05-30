@@ -283,10 +283,12 @@ export default function App() {
       });
       if (adsToProcess.length === 0) adsToProcess = validAds; 
 
-      addLog(`A processar ${adsToProcess.length} anúncios (Aplicando blindagem)...`, 'success');
+      addLog(`A processar e agrupar ${adsToProcess.length} anúncios...`, 'success');
 
-      // MAPA PROTEGIDO (Evita ecrã branco)
-      const formattedAds = adsToProcess.map((rawData, index) => {
+      // MAPA DE AGRUPAMENTO (Deduplicação e Soma de Anúncios)
+      const adsMap = new Map();
+
+      adsToProcess.forEach((rawData, index) => {
         try {
             const coreItem = rawData.node || rawData.ad?.snapshot || rawData.ad || rawData.data || rawData || {};
             const rootItem = rawData || {};
@@ -346,10 +348,6 @@ export default function App() {
                 } catch(e) { daysActive = 1; }
             }
 
-            let adStatus = "Teste";
-            if (adCount >= 4 || (daysActive >= 10 && adCount >= 2)) adStatus = "Escalando";
-            else if (daysActive >= 3 || adCount > 1) adStatus = "Validado";
-
             let videoUrl = coreItem.video_url || coreItem.videoUrl || coreItem.videoHdUrl || rootItem.video_url || null;
             if (!videoUrl && coreItem.videos?.length > 0) videoUrl = coreItem.videos[0].video_hd_url || coreItem.videos[0].video_url || coreItem.videos[0].url || (typeof coreItem.videos[0] === 'string' ? coreItem.videos[0] : null);
             if (typeof videoUrl !== 'string') videoUrl = null;
@@ -367,39 +365,58 @@ export default function App() {
             let likesCount = rootItem.page_likes || coreItem.page_likes || Math.floor(Math.random() * 800) + 100;
             if (isNaN(likesCount)) likesCount = Math.floor(Math.random() * 800) + 100;
 
-            return {
-              id: adId,
-              title: title,
-              advertiser: advertiser,
-              profilePic: profilePic,
-              copy: copyText,
-              targetUrl: targetUrl,
-              libraryUrl: libraryUrl,
-              daysActive: daysActive,
-              ticketPrice: ticketPrice,
-              adCount: adCount, 
-              niche: niche,
-              formatType: formatType,
-              platformCount: platformsRaw.length,
-              platform: platformsRaw.join(', '),
-              likesCount: likesCount,
-              status: adStatus,
-              type: isVideo ? "Vídeo" : "Imagem",
-              mediaUrl: mediaUrl,
-              videoUrl: videoUrl,
-              color: "from-slate-700 to-slate-900",
-              rawData: JSON.stringify(rawData, null, 2),
-              aiAnalysis: { 
-                persuasion: Math.floor(Math.random() * 15 + 80), 
-                retention: Math.floor(Math.random() * 20 + 70), 
-                cta: Math.floor(Math.random() * 10 + 85)
-              }
-            };
+            // ASSINATURA ÚNICA (Deduplica se o anunciante, texto e imagem forem iguais)
+            const signature = `${advertiser}_${copyText.substring(0, 30)}_${mediaUrl || videoUrl || 'no-media'}`;
+
+            if (adsMap.has(signature)) {
+                // Se o anúncio já existe na lista, soma a quantidade e guarda os maiores dias ativos
+                const existingAd = adsMap.get(signature);
+                existingAd.adCount += adCount;
+                if (daysActive > existingAd.daysActive) {
+                    existingAd.daysActive = daysActive;
+                }
+            } else {
+                // Se for a primeira vez que vemos este criativo, guardamos na lista
+                adsMap.set(signature, {
+                  id: adId,
+                  title: title,
+                  advertiser: advertiser,
+                  profilePic: profilePic,
+                  copy: copyText,
+                  targetUrl: targetUrl,
+                  libraryUrl: libraryUrl,
+                  daysActive: daysActive,
+                  ticketPrice: ticketPrice,
+                  adCount: adCount, 
+                  niche: niche,
+                  formatType: formatType,
+                  platformCount: platformsRaw.length,
+                  platform: platformsRaw.join(', '),
+                  likesCount: likesCount,
+                  status: "Teste", // Calculado na próxima fase
+                  type: isVideo ? "Vídeo" : "Imagem",
+                  mediaUrl: mediaUrl,
+                  videoUrl: videoUrl,
+                  color: "from-slate-700 to-slate-900",
+                  rawData: JSON.stringify(rawData, null, 2),
+                  aiAnalysis: { 
+                    persuasion: Math.floor(Math.random() * 15 + 80), 
+                    retention: Math.floor(Math.random() * 20 + 70), 
+                    cta: Math.floor(Math.random() * 10 + 85)
+                  }
+                });
+            }
         } catch (itemError) {
             console.error("Erro num anúncio ignorado:", itemError);
-            return null; // Anúncio corrompido é ignorado
         }
-      }).filter(Boolean); // Limpa todos os nulos que falharam no try/catch
+      });
+
+      // Calcular o status real final baseado nos dados agrupados
+      const formattedAds = Array.from(adsMap.values()).map(ad => {
+          if (ad.adCount >= 4 || (ad.daysActive >= 10 && ad.adCount >= 2)) ad.status = "Escalando";
+          else if (ad.daysActive >= 3 || ad.adCount > 1) ad.status = "Validado";
+          return ad;
+      });
 
       setAds(formattedAds.sort((a, b) => {
         if (a.status === 'Escalando' && b.status !== 'Escalando') return -1;
