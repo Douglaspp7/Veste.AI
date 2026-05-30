@@ -62,7 +62,6 @@ export default function App() {
     
     if (savedToken) setApifyToken(savedToken);
     if (savedActor) setActorId(savedActor);
-    // Limpa a chave se ela for, por engano, um pedaço de código
     if (savedGeminiToken && !savedGeminiToken.startsWith('//')) {
         setGeminiToken(savedGeminiToken);
     }
@@ -72,7 +71,6 @@ export default function App() {
     localStorage.setItem('adsniper_apify_token', apifyToken.trim());
     localStorage.setItem('adsniper_apify_actor', actorId.trim());
     
-    // Aceita qualquer formato de chave da Google (incluindo as novas "AQ...")
     const cleanGeminiToken = geminiToken.trim();
     if (cleanGeminiToken !== '') {
          localStorage.setItem('adsniper_gemini_token', cleanGeminiToken);
@@ -87,16 +85,19 @@ export default function App() {
   const callGeminiWithRetry = async (prompt, token, retries = 5) => {
     let apiKey = token || "";
 
-    // Garantir que a URL e o modelo estão corretos e consistentes com a versão da API
-    // Utilizamos o gemini-1.5-flash como padrão se houver uma chave definida pelo usuário
-    const model = apiKey ? "gemini-1.5-flash" : "gemini-2.5-flash-preview-09-2025";
-    const endpointUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-    
+    // NOVO: Piloto Automático de Modelos. Se um falhar (404), tenta o próximo.
+    let modelOptions = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-pro"];
+    if (!apiKey) modelOptions = ["gemini-2.5-flash-preview-09-2025"]; // Modelo secreto do Canvas
+
     const delays = [1000, 2000, 4000, 8000, 16000];
     let attempt = 0;
+    let currentModelIndex = 0;
     
     while (attempt <= retries) {
         try {
+            const model = modelOptions[currentModelIndex];
+            const endpointUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
             const response = await fetch(endpointUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -105,7 +106,15 @@ export default function App() {
             
             if (!response.ok) {
                 const errData = await response.json().catch(() => ({}));
-                throw new Error(errData.error?.message || `Erro ${response.status} no servidor do Google Gemini`);
+                const errMsg = errData.error?.message || `Erro ${response.status} no servidor do Google Gemini`;
+                
+                // Se a Google devolver 404 (modelo não encontrado), tentamos imediatamente o próximo modelo da lista
+                if (response.status === 404 && currentModelIndex < modelOptions.length - 1) {
+                    currentModelIndex++;
+                    continue; 
+                }
+
+                throw new Error(errMsg);
             }
             return await response.json();
         } catch (err) {
@@ -124,7 +133,6 @@ export default function App() {
     const cleanToken = geminiToken.trim();
     const isVercel = window.location.hostname !== 'localhost' && !window.location.hostname.includes('google');
     
-    // Apenas verifica se a chave não está vazia.
     if (isVercel && !cleanToken) {
        alert("Por favor, adicione a sua Chave API do Gemini nas Configurações para gerar as análises.");
        return;
