@@ -218,7 +218,7 @@ export default function App() {
   };
 
   const startMining = async () => {
-    setMiningError(''); setSystemLogs([]);
+    setMiningError(''); setSystemLogs([]); setMinDaysFilter(0); // Reseta o filtro na nova pesquisa
     const token = apifyToken.trim(); const actor = actorId.trim();
     if (!token) { setMiningError("Configure o Token da Apify nas Configurações."); return; }
     if (!miningKeyword.trim()) { setMiningError("Introduza uma palavra-chave."); return; }
@@ -285,7 +285,13 @@ export default function App() {
 
       addLog(`A processar e agrupar ${adsToProcess.length} anúncios...`, 'success');
 
-      // MAPA DE AGRUPAMENTO (Deduplicação e Soma de Anúncios)
+      // Função para Limpar URLs de CDN do Facebook (Remove os tokens complexos que mudam sempre)
+      const cleanUrl = (url) => {
+          if (!url) return 'no-media';
+          try { return url.split('?')[0]; } catch(e) { return 'no-media'; }
+      };
+
+      // MAPA DE AGRUPAMENTO (Deduplicação e Soma de Anúncios Reais)
       const adsMap = new Map();
 
       adsToProcess.forEach((rawData, index) => {
@@ -311,23 +317,23 @@ export default function App() {
 
             let title = coreItem.title || coreItem.headline || rootItem.title || "";
             if (!title && coreItem.titles?.length > 0) title = coreItem.titles[0].text || coreItem.titles[0];
-            if (typeof title !== 'string') title = "Oferta Encontrada"; // Proteção Crítica!
+            if (typeof title !== 'string') title = "Oferta Encontrada";
 
             let ticketPrice = "Oculto";
             const priceRegex = /(?:R\$|R\$\s)\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)/i;
             const priceMatch = copyText.match(priceRegex);
             if (priceMatch) ticketPrice = `R$ ${priceMatch[1]}`;
 
-            let adCount = coreItem.collation_count || rootItem.collation_count || coreItem.collationCount || 1;
-            if (isNaN(adCount) || typeof adCount !== 'number') adCount = 1;
+            let adCount = parseInt(coreItem.collation_count || rootItem.collation_count || coreItem.collationCount, 10);
+            if (isNaN(adCount) || adCount < 1) adCount = 1;
 
             let niche = "Geral";
             const copyLower = copyText.toLowerCase();
-            if (copyLower.includes('curso') || copyLower.includes('aula') || copyLower.includes('aprender') || copyLower.includes('método')) niche = "Educação";
+            if (copyLower.includes('curso') || copyLower.includes('aula') || copyLower.includes('aprender') || copyLower.includes('método') || copyLower.includes('concurso') || copyLower.includes('direito') || copyLower.includes('alunos')) niche = "Educação";
             else if (copyLower.includes('emagrecer') || copyLower.includes('pele') || copyLower.includes('cabelo') || copyLower.includes('dores')) niche = "Saúde/Beleza";
             else if (copyLower.includes('aposta') || copyLower.includes('bet') || copyLower.includes('cassino') || copyLower.includes('slot')) niche = "iGaming";
-            else if (copyLower.includes('frete') || copyLower.includes('loja') || copyLower.includes('desconto')) niche = "E-commerce";
-            else if (copyLower.includes('jesus') || copyLower.includes('cristã') || copyLower.includes('igreja') || copyLower.includes('culto')) niche = "Religião";
+            else if (copyLower.includes('frete') || copyLower.includes('loja') || copyLower.includes('desconto') || copyLower.includes('estoque')) niche = "E-commerce";
+            else if (copyLower.includes('jesus') || copyLower.includes('cristã') || copyLower.includes('igreja') || copyLower.includes('culto') || copyLower.includes('ministério')) niche = "Religião";
 
             let targetUrl = coreItem.snapshot?.cards?.[0]?.link_url || coreItem.cards?.[0]?.link_url || coreItem.link_url || rootItem.link_url || "";
             if (typeof targetUrl !== 'string') targetUrl = "";
@@ -365,18 +371,27 @@ export default function App() {
             let likesCount = rootItem.page_likes || coreItem.page_likes || Math.floor(Math.random() * 800) + 100;
             if (isNaN(likesCount)) likesCount = Math.floor(Math.random() * 800) + 100;
 
-            // ASSINATURA ÚNICA (Deduplica se o anunciante, texto e imagem forem iguais)
-            const signature = `${advertiser}_${copyText.substring(0, 30)}_${mediaUrl || videoUrl || 'no-media'}`;
+            // ASSINATURA BLINDADA (Agrupa usando URLs limpos sem os Tokens dinâmicos do FB)
+            const copyTrimmed = copyText.substring(0, 40).replace(/\s+/g, ' ').trim();
+            const signature = `${advertiser}_${copyTrimmed}_${cleanUrl(mediaUrl || videoUrl)}`;
 
             if (adsMap.has(signature)) {
-                // Se o anúncio já existe na lista, soma a quantidade e guarda os maiores dias ativos
+                // ANÚNCIO DUPLICADO ENCONTRADO! Vamos agrupá-lo e somar as métricas.
                 const existingAd = adsMap.get(signature);
-                existingAd.adCount += adCount;
+                
+                // Se a API mandou os anúncios soltos um por um, nós somamos.
+                // Se a API mandou o número já somado (collation_count), pegamos o maior valor.
+                if (adCount > 1) {
+                     if (adCount > existingAd.adCount) existingAd.adCount = adCount;
+                } else {
+                     existingAd.adCount += 1;
+                }
+
+                // Mantém sempre o registo dos dias mais antigos encontrados para este grupo
                 if (daysActive > existingAd.daysActive) {
                     existingAd.daysActive = daysActive;
                 }
             } else {
-                // Se for a primeira vez que vemos este criativo, guardamos na lista
                 adsMap.set(signature, {
                   id: adId,
                   title: title,
@@ -393,7 +408,7 @@ export default function App() {
                   platformCount: platformsRaw.length,
                   platform: platformsRaw.join(', '),
                   likesCount: likesCount,
-                  status: "Teste", // Calculado na próxima fase
+                  status: "Teste",
                   type: isVideo ? "Vídeo" : "Imagem",
                   mediaUrl: mediaUrl,
                   videoUrl: videoUrl,
@@ -445,6 +460,11 @@ export default function App() {
         return true;
     });
   };
+
+  // Cálculo Dinâmico do Máximo do Filtro baseado nos anúncios visíveis
+  const maxDaysAvailable = (ads.length > 0 || savedAds.length > 0) 
+      ? Math.max(...(activeTab === 'vault' ? savedAds : ads).map(a => a.daysActive), 30) 
+      : 30;
 
   if (!isAuthenticated) {
     return (
@@ -513,7 +533,7 @@ export default function App() {
                   </div>
               )}
 
-              {/* BARRA DE FILTROS */}
+              {/* BARRA DE FILTROS DINÂMICA */}
               {(ads.length > 0 || activeTab === 'vault') && (
                   <div className="mb-8 flex flex-wrap items-center gap-4 bg-slate-900/50 p-4 rounded-xl border border-slate-800/50">
                       <div className="flex items-center gap-2 text-slate-400 text-sm font-bold mr-2">
@@ -521,8 +541,16 @@ export default function App() {
                       </div>
                       <div className="flex items-center gap-3 bg-slate-950 px-4 py-2 rounded-lg border border-slate-800">
                           <span className="text-xs text-slate-500 font-bold uppercase">Tempo no Ar:</span>
-                          <input type="range" min="0" max="30" step="1" value={minDaysFilter} onChange={(e) => setMinDaysFilter(Number(e.target.value))} className="w-24 accent-green-500" />
-                          <span className="text-sm font-bold text-green-400 w-12 text-right">+{minDaysFilter}d</span>
+                          <input 
+                             type="range" 
+                             min="0" 
+                             max={maxDaysAvailable} 
+                             step="1" 
+                             value={minDaysFilter} 
+                             onChange={(e) => setMinDaysFilter(Number(e.target.value))} 
+                             className="w-32 accent-green-500" 
+                          />
+                          <span className="text-sm font-bold text-green-400 w-16 text-right">+{minDaysFilter} dias</span>
                       </div>
                       <div className="flex items-center gap-3 bg-slate-950 px-4 py-2 rounded-lg border border-slate-800">
                           <span className="text-xs text-slate-500 font-bold uppercase">Formato:</span>
