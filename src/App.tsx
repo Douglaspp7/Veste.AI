@@ -4,7 +4,7 @@ import {
   Settings, Zap, Target, Crosshair, Loader2, Lock, ArrowRight, 
   LayoutDashboard, PlayCircle, Image as ImageIcon, BarChart2, X, Terminal, 
   AlertCircle, Code, ExternalLink, Calendar, ThumbsUp, Layers, Sparkles, Bot,
-  Heart, Filter, Video, Bookmark, DollarSign, Clock, CheckCircle, Flame, Library
+  Heart, Filter, Video, Bookmark, DollarSign, Clock, CheckCircle, Flame, Library, ArrowUpDown
 } from 'lucide-react';
 
 // --- COMPONENTES DE DESIGN (Estilo Fusion Ads) ---
@@ -61,9 +61,10 @@ export default function App() {
   const [ads, setAds] = useState([]);
   const [savedAds, setSavedAds] = useState([]);
   
-  // Filtros
+  // Filtros e Ordenação
   const [minDaysFilter, setMinDaysFilter] = useState(0);
   const [mediaTypeFilter, setMediaTypeFilter] = useState('ALL');
+  const [sortBy, setSortBy] = useState('escalados');
 
   // Estado da Mineração
   const [isMining, setIsMining] = useState(false);
@@ -110,7 +111,6 @@ export default function App() {
     }
   }, []);
 
-  // Guarda o cofre sempre que for atualizado
   useEffect(() => {
     localStorage.setItem('adsniper_vault', JSON.stringify(savedAds));
   }, [savedAds]);
@@ -218,7 +218,7 @@ export default function App() {
   };
 
   const startMining = async () => {
-    setMiningError(''); setSystemLogs([]); setMinDaysFilter(0); // Reseta o filtro na nova pesquisa
+    setMiningError(''); setSystemLogs([]); setMinDaysFilter(0); 
     const token = apifyToken.trim(); const actor = actorId.trim();
     if (!token) { setMiningError("Configure o Token da Apify nas Configurações."); return; }
     if (!miningKeyword.trim()) { setMiningError("Introduza uma palavra-chave."); return; }
@@ -231,10 +231,24 @@ export default function App() {
     try {
       let payload = {
           searchQueries: [miningKeyword.trim()], 
-          countries: "BR", activeStatus: "ACTIVE", adType: "ALL", maxResultsPerQuery: 30                 
+          countries: "BR", activeStatus: "ACTIVE", adType: "ALL", 
+          maxResultsPerQuery: 100 // AUMENTADO: Captura um universo maior de anúncios
       };
 
-      addLog(`Robô detetado: enviando pesquisa...`);
+      if (safeActorId.includes('3853UUZQG6pjjdw11') || safeActorId.includes('memo23')) {
+          payload = {
+              startUrls: [{ url: `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=BR&q=${encodeURIComponent(miningKeyword.trim())}` }],
+              proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ["RESIDENTIAL"] },
+              maxItems: 100
+          };
+      } else if (!safeActorId.includes('dz_omar')) {
+          payload = {
+              startUrls: [{ url: `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=BR&q=${encodeURIComponent(miningKeyword.trim())}` }],
+              resultsLimit: 100
+          };
+      }
+
+      addLog(`Robô detetado: enviando pesquisa (Max: 100)...`);
       const runResponse = await fetch(`https://api.apify.com/v2/acts/${safeActorId}/runs?token=${token}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
       });
@@ -285,13 +299,12 @@ export default function App() {
 
       addLog(`A processar e agrupar ${adsToProcess.length} anúncios...`, 'success');
 
-      // Função para Limpar URLs de CDN do Facebook (Remove os tokens complexos que mudam sempre)
       const cleanUrl = (url) => {
           if (!url) return 'no-media';
           try { return url.split('?')[0]; } catch(e) { return 'no-media'; }
       };
 
-      // MAPA DE AGRUPAMENTO (Deduplicação e Soma de Anúncios Reais)
+      // MAPA DE AGRUPAMENTO (Deduplicação Inteligente com soma de IDs)
       const adsMap = new Map();
 
       adsToProcess.forEach((rawData, index) => {
@@ -324,16 +337,16 @@ export default function App() {
             const priceMatch = copyText.match(priceRegex);
             if (priceMatch) ticketPrice = `R$ ${priceMatch[1]}`;
 
-            let adCount = parseInt(coreItem.collation_count || rootItem.collation_count || coreItem.collationCount, 10);
-            if (isNaN(adCount) || adCount < 1) adCount = 1;
+            let countForThisArchive = parseInt(coreItem.collation_count || rootItem.collation_count || coreItem.collationCount, 10);
+            if (isNaN(countForThisArchive) || countForThisArchive < 1) countForThisArchive = 1;
 
             let niche = "Geral";
             const copyLower = copyText.toLowerCase();
             if (copyLower.includes('curso') || copyLower.includes('aula') || copyLower.includes('aprender') || copyLower.includes('método') || copyLower.includes('concurso') || copyLower.includes('direito') || copyLower.includes('alunos')) niche = "Educação";
             else if (copyLower.includes('emagrecer') || copyLower.includes('pele') || copyLower.includes('cabelo') || copyLower.includes('dores')) niche = "Saúde/Beleza";
-            else if (copyLower.includes('aposta') || copyLower.includes('bet') || copyLower.includes('cassino') || copyLower.includes('slot')) niche = "iGaming";
+            else if (copyLower.includes('aposta') || copyLower.includes('bet') || copyLower.includes('cassino') || copyLower.includes('slot') || copyLower.includes('tigre')) niche = "iGaming";
             else if (copyLower.includes('frete') || copyLower.includes('loja') || copyLower.includes('desconto') || copyLower.includes('estoque')) niche = "E-commerce";
-            else if (copyLower.includes('jesus') || copyLower.includes('cristã') || copyLower.includes('igreja') || copyLower.includes('culto') || copyLower.includes('ministério')) niche = "Religião";
+            else if (copyLower.includes('jesus') || copyLower.includes('cristã') || copyLower.includes('igreja') || copyLower.includes('culto') || copyLower.includes('ministério') || copyLower.includes('deus')) niche = "Religião";
 
             let targetUrl = coreItem.snapshot?.cards?.[0]?.link_url || coreItem.cards?.[0]?.link_url || coreItem.link_url || rootItem.link_url || "";
             if (typeof targetUrl !== 'string') targetUrl = "";
@@ -371,27 +384,29 @@ export default function App() {
             let likesCount = rootItem.page_likes || coreItem.page_likes || Math.floor(Math.random() * 800) + 100;
             if (isNaN(likesCount)) likesCount = Math.floor(Math.random() * 800) + 100;
 
-            // ASSINATURA BLINDADA (Agrupa usando URLs limpos sem os Tokens dinâmicos do FB)
             const copyTrimmed = copyText.substring(0, 40).replace(/\s+/g, ' ').trim();
             const signature = `${advertiser}_${copyTrimmed}_${cleanUrl(mediaUrl || videoUrl)}`;
 
             if (adsMap.has(signature)) {
-                // ANÚNCIO DUPLICADO ENCONTRADO! Vamos agrupá-lo e somar as métricas.
+                // SOMA INTELIGENTE DE IDS (Impede duplicação, mas soma IDs únicos)
                 const existingAd = adsMap.get(signature);
                 
-                // Se a API mandou os anúncios soltos um por um, nós somamos.
-                // Se a API mandou o número já somado (collation_count), pegamos o maior valor.
-                if (adCount > 1) {
-                     if (adCount > existingAd.adCount) existingAd.adCount = adCount;
-                } else {
-                     existingAd.adCount += 1;
+                if (!existingAd.archiveIds) existingAd.archiveIds = {};
+                
+                if (!existingAd.archiveIds[adId] || countForThisArchive > existingAd.archiveIds[adId]) {
+                    existingAd.archiveIds[adId] = countForThisArchive;
                 }
+                
+                // Recalcula o total exato
+                existingAd.adCount = Object.values(existingAd.archiveIds).reduce((a, b) => a + b, 0);
 
-                // Mantém sempre o registo dos dias mais antigos encontrados para este grupo
                 if (daysActive > existingAd.daysActive) {
                     existingAd.daysActive = daysActive;
                 }
             } else {
+                const initialArchiveIds = {};
+                initialArchiveIds[adId] = countForThisArchive;
+
                 adsMap.set(signature, {
                   id: adId,
                   title: title,
@@ -402,7 +417,8 @@ export default function App() {
                   libraryUrl: libraryUrl,
                   daysActive: daysActive,
                   ticketPrice: ticketPrice,
-                  adCount: adCount, 
+                  adCount: countForThisArchive, 
+                  archiveIds: initialArchiveIds, // Armazena os IDs do Meta para garantir precisão
                   niche: niche,
                   formatType: formatType,
                   platformCount: platformsRaw.length,
@@ -426,7 +442,6 @@ export default function App() {
         }
       });
 
-      // Calcular o status real final baseado nos dados agrupados
       const formattedAds = Array.from(adsMap.values()).map(ad => {
           if (ad.adCount >= 4 || (ad.daysActive >= 10 && ad.adCount >= 2)) ad.status = "Escalando";
           else if (ad.daysActive >= 3 || ad.adCount > 1) ad.status = "Validado";
@@ -436,6 +451,7 @@ export default function App() {
       setAds(formattedAds.sort((a, b) => {
         if (a.status === 'Escalando' && b.status !== 'Escalando') return -1;
         if (b.status === 'Escalando' && a.status !== 'Escalando') return 1;
+        if (b.adCount !== a.adCount) return b.adCount - a.adCount;
         return b.daysActive - a.daysActive; 
       }));
 
@@ -454,14 +470,30 @@ export default function App() {
 
   const getDisplayedAds = () => {
     const sourceAds = activeTab === 'vault' ? savedAds : ads;
-    return sourceAds.filter(ad => {
+    
+    // 1. Filtrar
+    let filtered = sourceAds.filter(ad => {
         if (ad.daysActive < minDaysFilter) return false;
         if (mediaTypeFilter !== 'ALL' && ad.type !== mediaTypeFilter) return false;
         return true;
     });
+
+    // 2. Ordenar (Dinâmico)
+    return filtered.sort((a, b) => {
+        if (sortBy === 'escalados') {
+            if (a.status === 'Escalando' && b.status !== 'Escalando') return -1;
+            if (b.status === 'Escalando' && a.status !== 'Escalando') return 1;
+            if (b.adCount !== a.adCount) return b.adCount - a.adCount;
+            return b.daysActive - a.daysActive;
+        } else if (sortBy === 'recentes') {
+            return a.daysActive - b.daysActive;
+        } else if (sortBy === 'antigos') {
+            return b.daysActive - a.daysActive;
+        }
+        return 0;
+    });
   };
 
-  // Cálculo Dinâmico do Máximo do Filtro baseado nos anúncios visíveis
   const maxDaysAvailable = (ads.length > 0 || savedAds.length > 0) 
       ? Math.max(...(activeTab === 'vault' ? savedAds : ads).map(a => a.daysActive), 30) 
       : 30;
@@ -533,7 +565,7 @@ export default function App() {
                   </div>
               )}
 
-              {/* BARRA DE FILTROS DINÂMICA */}
+              {/* BARRA DE FILTROS E ORDENAÇÃO */}
               {(ads.length > 0 || activeTab === 'vault') && (
                   <div className="mb-8 flex flex-wrap items-center gap-4 bg-slate-900/50 p-4 rounded-xl border border-slate-800/50">
                       <div className="flex items-center gap-2 text-slate-400 text-sm font-bold mr-2">
@@ -548,7 +580,7 @@ export default function App() {
                              step="1" 
                              value={minDaysFilter} 
                              onChange={(e) => setMinDaysFilter(Number(e.target.value))} 
-                             className="w-32 accent-green-500" 
+                             className="w-32 accent-green-500 cursor-pointer" 
                           />
                           <span className="text-sm font-bold text-green-400 w-16 text-right">+{minDaysFilter} dias</span>
                       </div>
@@ -558,6 +590,18 @@ export default function App() {
                               <option value="ALL">Todos</option>
                               <option value="Vídeo">Apenas Vídeos</option>
                               <option value="Imagem">Apenas Imagens</option>
+                          </select>
+                      </div>
+
+                      <div className="flex-1"></div>
+
+                      <div className="flex items-center gap-3 bg-indigo-950/30 px-4 py-2 rounded-lg border border-indigo-500/30">
+                          <ArrowUpDown className="w-4 h-4 text-indigo-400"/>
+                          <span className="text-xs text-indigo-300 font-bold uppercase">Ordenar:</span>
+                          <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="bg-transparent text-sm font-bold text-indigo-100 outline-none cursor-pointer">
+                              <option value="escalados">Mais Escalados (Fogo)</option>
+                              <option value="antigos">Mais Antigos</option>
+                              <option value="recentes">Mais Recentes</option>
                           </select>
                       </div>
                   </div>
