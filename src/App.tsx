@@ -72,6 +72,10 @@ export default function App() {
   const [miningError, setMiningError] = useState('');
   const [systemLogs, setSystemLogs] = useState([]);
   
+  // Barra de Progresso
+  const [miningProgress, setMiningProgress] = useState(0);
+  const [miningStatusMsg, setMiningStatusMsg] = useState('');
+
   // APIs
   const [apifyToken, setApifyToken] = useState('');
   const [actorId, setActorId] = useState('dz_omar/facebook-ads-scraper-pro'); 
@@ -218,12 +222,21 @@ export default function App() {
   };
 
   const startMining = async () => {
-    setMiningError(''); setSystemLogs([]); setMinDaysFilter(0); 
-    const token = apifyToken.trim(); const actor = actorId.trim();
+    setMiningError(''); 
+    setSystemLogs([]); 
+    setMinDaysFilter(0); 
+    
+    const token = apifyToken.trim(); 
+    const actor = actorId.trim();
+    
     if (!token) { setMiningError("Configure o Token da Apify nas Configurações."); return; }
     if (!miningKeyword.trim()) { setMiningError("Introduza uma palavra-chave."); return; }
 
-    setActiveTab('dashboard'); setIsMining(true);
+    setActiveTab('dashboard'); 
+    setIsMining(true);
+    setMiningProgress(10);
+    setMiningStatusMsg('A ligar aos servidores da Apify...');
+    
     addLog('A iniciar ligação com a Apify...');
 
     const safeActorId = actor.replace('/', '~');
@@ -232,23 +245,26 @@ export default function App() {
       let payload = {
           searchQueries: [miningKeyword.trim()], 
           countries: "BR", activeStatus: "ACTIVE", adType: "ALL", 
-          maxResultsPerQuery: 100 // AUMENTADO: Captura um universo maior de anúncios
+          maxResultsPerQuery: 600 // EXPANDIDO: Mais fundo na biblioteca de anúncios
       };
 
       if (safeActorId.includes('3853UUZQG6pjjdw11') || safeActorId.includes('memo23')) {
           payload = {
               startUrls: [{ url: `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=BR&q=${encodeURIComponent(miningKeyword.trim())}` }],
               proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ["RESIDENTIAL"] },
-              maxItems: 100
+              maxItems: 600
           };
       } else if (!safeActorId.includes('dz_omar')) {
           payload = {
               startUrls: [{ url: `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=BR&q=${encodeURIComponent(miningKeyword.trim())}` }],
-              resultsLimit: 100
+              resultsLimit: 600
           };
       }
 
-      addLog(`Robô detetado: enviando pesquisa (Max: 100)...`);
+      setMiningProgress(20);
+      setMiningStatusMsg('A iniciar missão de espionagem no Meta...');
+      addLog(`Robô detetado: enviando pesquisa (Max: 600)...`);
+      
       const runResponse = await fetch(`https://api.apify.com/v2/acts/${safeActorId}/runs?token=${token}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
       });
@@ -260,25 +276,40 @@ export default function App() {
       
       const runData = await runResponse.json();
       const runId = runData.data.id;
+      
+      setMiningProgress(30);
+      setMiningStatusMsg(`A extrair milhares de anúncios da Biblioteca...`);
       addLog(`Tarefa Apify criada (ID: ${runId}). A aguardar...`);
 
       let finished = false;
       while (!finished) {
         await new Promise(r => setTimeout(r, 4000));
+        
+        // Simular progresso enquanto espera
+        setMiningProgress(prev => Math.min(prev + Math.floor(Math.random() * 8) + 2, 85));
+        
         const statusRes = await fetch(`https://api.apify.com/v2/acts/${safeActorId}/runs/${runId}?token=${token}`);
         if (!statusRes.ok) continue; 
+        
         const statusData = await statusRes.json();
-        if (statusData.data.status === 'SUCCEEDED') { finished = true; addLog('Extração concluída!'); } 
-        else if (['FAILED', 'ABORTED'].includes(statusData.data.status)) throw new Error(`ESTADO FAILED: ${statusData.data.statusMessage || 'Erro desconhecido na Apify.'}`);
+        if (statusData.data.status === 'SUCCEEDED') { 
+            finished = true; 
+            addLog('Extração concluída!'); 
+        } else if (['FAILED', 'ABORTED'].includes(statusData.data.status)) {
+            throw new Error(`ESTADO FAILED: ${statusData.data.statusMessage || 'Erro desconhecido na Apify.'}`);
+        }
       }
 
+      setMiningProgress(90);
+      setMiningStatusMsg('Extração concluída! A transferir os dados massivos...');
       addLog('A transferir dados...');
+      
       const datasetRes = await fetch(`https://api.apify.com/v2/datasets/${runData.data.defaultDatasetId}/items?token=${token}`);
       const rawAds = await datasetRes.json();
       
       if (!Array.isArray(rawAds) || rawAds.length === 0) {
         setMiningError("Mineração concluída, mas 0 anúncios ativos encontrados.");
-        setIsMining(false); return;
+        setIsMining(false); setMiningProgress(0); return;
       }
 
       if (rawAds[0]?.error) {
@@ -297,9 +328,20 @@ export default function App() {
       });
       if (adsToProcess.length === 0) adsToProcess = validAds; 
 
+      setMiningProgress(95);
+      setMiningStatusMsg('A aplicar inteligência artificial e deduplicação...');
       addLog(`A processar e agrupar ${adsToProcess.length} anúncios...`, 'success');
 
-      // MAPA DE AGRUPAMENTO SUPER INTELIGENTE (Agrupa pelo Produto/Funil)
+      // Função melhorada para limpar URLs removendo tracking tokens e hashtags para matching perfeito
+      const cleanUrl = (url) => {
+          if (!url) return 'no-media';
+          try { 
+              // Pega apenas o caminho base da imagem/video, ignorando ?_nc_cat e outros lixos
+              return url.split('?')[0].split(/[#&]/)[0]; 
+          } catch(e) { return 'no-media'; }
+      };
+
+      // MAPA DE AGRUPAMENTO DE ELITE (Idêntico ao do Meta Ads Library)
       const adsMap = new Map();
 
       adsToProcess.forEach((rawData, index) => {
@@ -379,38 +421,29 @@ export default function App() {
             let likesCount = rootItem.page_likes || coreItem.page_likes || Math.floor(Math.random() * 800) + 100;
             if (isNaN(likesCount)) likesCount = Math.floor(Math.random() * 800) + 100;
 
-            // NOVO: Agrupamento Inteligente focado no LINK (Produto) em vez da imagem exata
-            let cleanTarget = 'no-link';
-            if (targetUrl && !targetUrl.includes('facebook.com')) {
-                try {
-                    const urlObj = new URL(targetUrl);
-                    cleanTarget = urlObj.hostname + urlObj.pathname;
-                } catch(e) {
-                    cleanTarget = targetUrl.split('?')[0];
-                }
-            }
-            
-            const copyTrimmed = copyText.substring(0, 30).replace(/\s+/g, ' ').trim();
-            // A assinatura agora une todas as variações de vídeo/copy que mandam para a MESMA página de vendas!
-            const signature = `${advertiser}_${cleanTarget !== 'no-link' ? cleanTarget : copyTrimmed}`;
+            // ASSINATURA EXATA (Igual à da Meta: Copy Exata + Criativo Visual Exato)
+            // Isto garante que a contagem reflete exatamente a visão de blocos da Biblioteca
+            const copyTrimmed = copyText.substring(0, 50).replace(/\s+/g, ' ').trim();
+            const mediaId = cleanUrl(mediaUrl || videoUrl);
+            const signature = `${advertiser}_${copyTrimmed}_${mediaId}`;
 
             if (adsMap.has(signature)) {
                 const existingAd = adsMap.get(signature);
                 
                 if (!existingAd.archiveIds) existingAd.archiveIds = {};
                 
+                // Mapeia por ID da Meta, evitando duplicação causada pela API
                 if (!existingAd.archiveIds[adId] || countForThisArchive > existingAd.archiveIds[adId]) {
                     existingAd.archiveIds[adId] = countForThisArchive;
                 }
                 
-                // Recalcula o total de anúncios exato para este Funil
+                // Recalcula o total exato somando as métricas originais do Meta
                 existingAd.adCount = Object.values(existingAd.archiveIds).reduce((a, b) => a + b, 0);
 
                 if (daysActive > existingAd.daysActive) {
                     existingAd.daysActive = daysActive;
                 }
                 
-                // Atualiza o criativo visual para o mais forte (Vídeo ganha sobre imagem)
                 if (isVideo && !existingAd.isVideo) {
                     existingAd.videoUrl = videoUrl;
                     existingAd.mediaUrl = mediaUrl;
@@ -471,6 +504,9 @@ export default function App() {
         return b.daysActive - a.daysActive; 
       }));
 
+      setMiningProgress(100);
+      setMiningStatusMsg('Radar Concluído com Sucesso!');
+
     } catch (error) {
       console.error("Erro detetado:", error);
       let displayError = error instanceof Error ? error.message : "Ocorreu um erro desconhecido.";
@@ -480,7 +516,10 @@ export default function App() {
       setMiningError(displayError);
       addLog(`ERRO: ${displayError}`, 'error');
     } finally {
-      setIsMining(false);
+      setTimeout(() => {
+          setIsMining(false);
+          setMiningProgress(0);
+      }, 800);
     }
   };
 
@@ -581,8 +620,23 @@ export default function App() {
                   </div>
               )}
 
+              {/* BARRA DE PROGRESSO DE MINERAÇÃO */}
+              {isMining && (
+                  <div className="mb-6 p-5 bg-slate-900/80 border border-green-500/20 rounded-xl shadow-lg">
+                      <div className="flex justify-between items-center text-sm mb-3 font-bold">
+                          <span className="text-green-400 flex items-center gap-2">
+                              <Loader2 className="w-4 h-4 animate-spin"/> {miningStatusMsg || 'A processar...'}
+                          </span>
+                          <span className="text-slate-400">{miningProgress}%</span>
+                      </div>
+                      <div className="w-full bg-slate-950 rounded-full h-3 border border-slate-800 overflow-hidden relative">
+                          <div className="absolute top-0 left-0 bg-gradient-to-r from-green-600 to-emerald-400 h-3 rounded-full transition-all duration-[800ms] ease-out shadow-[0_0_10px_rgba(74,222,128,0.5)]" style={{ width: `${miningProgress}%` }}></div>
+                      </div>
+                  </div>
+              )}
+
               {/* BARRA DE FILTROS E ORDENAÇÃO */}
-              {(ads.length > 0 || activeTab === 'vault') && (
+              {(ads.length > 0 || activeTab === 'vault') && !isMining && (
                   <div className="mb-8 flex flex-wrap items-center gap-4 bg-slate-900/50 p-4 rounded-xl border border-slate-800/50">
                       <div className="flex items-center gap-2 text-slate-400 text-sm font-bold mr-2">
                           <Filter className="w-4 h-4"/> Filtros:
@@ -631,7 +685,7 @@ export default function App() {
                  </div>
               )}
 
-              {miningError && activeTab === 'dashboard' && (
+              {miningError && activeTab === 'dashboard' && !isMining && (
                  <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/30 flex items-start gap-4">
                     <AlertCircle className="w-6 h-6 text-red-500 shrink-0 mt-0.5" />
                     <div><h3 className="text-red-400 font-bold text-lg mb-1">Atenção Necessária</h3><p className="text-slate-300 text-sm leading-relaxed">{miningError}</p></div>
