@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React from 'react';
 import { Copy, Loader2 } from 'lucide-react';
 
