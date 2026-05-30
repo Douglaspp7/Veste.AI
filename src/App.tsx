@@ -72,11 +72,11 @@ export default function App() {
     localStorage.setItem('adsniper_apify_token', apifyToken.trim());
     localStorage.setItem('adsniper_apify_actor', actorId.trim());
     
-    // Garante que não guardamos lixo
+    // CORREÇÃO: Aceita qualquer formato de chave da Google (incluindo as novas "AQ...")
     const cleanGeminiToken = geminiToken.trim();
-    if (cleanGeminiToken.startsWith('AIzaSy')) {
+    if (cleanGeminiToken !== '') {
          localStorage.setItem('adsniper_gemini_token', cleanGeminiToken);
-    } else if (cleanGeminiToken === '') {
+    } else {
          localStorage.removeItem('adsniper_gemini_token');
     }
 
@@ -85,11 +85,7 @@ export default function App() {
   };
 
   const callGeminiWithRetry = async (prompt, token, retries = 5) => {
-    // Validação extra: Se o token for código ou lixo, força a usar sem token (para o Canvas)
     let apiKey = token || "";
-    if (apiKey && !apiKey.startsWith('AIzaSy')) {
-        apiKey = ""; 
-    }
 
     const model = apiKey ? "gemini-1.5-flash" : "gemini-2.5-flash-preview-09-2025";
     const endpointUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
@@ -123,12 +119,12 @@ export default function App() {
   };
 
   const analyzeAdWithAI = async (ad) => {
-    // Validação segura para garantir que o token começa corretamente
     const cleanToken = geminiToken.trim();
     const isVercel = window.location.hostname !== 'localhost' && !window.location.hostname.includes('google');
     
-    if (isVercel && (!cleanToken || !cleanToken.startsWith('AIzaSy'))) {
-       alert("Por favor, verifique a sua Chave API do Gemini nas Configurações. Ela deve começar com 'AIzaSy'.");
+    // CORREÇÃO: Apenas verifica se a chave não está vazia.
+    if (isVercel && !cleanToken) {
+       alert("Por favor, adicione a sua Chave API do Gemini nas Configurações para gerar as análises.");
        return;
     }
 
@@ -665,7 +661,7 @@ Forneça um relatório direto contendo:
                       type="password" 
                       value={geminiToken} 
                       onChange={e => setGeminiToken(e.target.value)} 
-                      placeholder="AIzaSy..." 
+                      placeholder="AQ... ou AIzaSy..." 
                       className="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-white outline-none focus:border-indigo-500 transition-colors mb-2" 
                     />
                     <p className="text-xs text-slate-500">Obtenha a sua chave gratuita no <a href="https://aistudio.google.com/" target="_blank" rel="noreferrer" className="text-indigo-400 hover:underline">Google AI Studio</a>. É necessária para gerar o relatório do consultor no seu site público.</p>
