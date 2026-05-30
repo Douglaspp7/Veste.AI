@@ -3,21 +3,39 @@ import React, { useState, useEffect } from 'react';
 import {
   Settings, Zap, Target, Crosshair, Loader2, Lock, ArrowRight, 
   LayoutDashboard, PlayCircle, Image as ImageIcon, BarChart2, X, Terminal, 
-  AlertCircle, Code, ExternalLink, Calendar, ThumbsUp, Layers, Sparkles, Bot
+  AlertCircle, Code, ExternalLink, Calendar, ThumbsUp, Layers, Sparkles, Bot,
+  Heart, Filter, Video, Bookmark, DollarSign, Clock, CheckCircle, Flame
 } from 'lucide-react';
 
-const StatusBadge = ({ status }) => {
-  const colors = {
-    "Escalando": "bg-green-500/20 text-green-400 border-green-500/30",
-    "Validado": "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-    "Teste": "bg-lime-500/20 text-lime-400 border-lime-500/30",
+// --- COMPONENTES DE DESIGN (Estilo Fusion Ads) ---
+
+const FusionBadge = ({ icon: Icon, text, variant = 'default' }) => {
+  const variants = {
+    default: "bg-slate-800 text-slate-300 border-slate-700",
+    success: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+    warning: "bg-orange-500/10 text-orange-400 border-orange-500/20",
+    danger: "bg-rose-500/10 text-rose-400 border-rose-500/20",
+    brand: "bg-indigo-500/10 text-indigo-400 border-indigo-500/20"
   };
+
   return (
-    <span className={`px-2 py-1 text-xs font-medium rounded-md border flex items-center gap-1.5 ${colors[status] || colors["Teste"]}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${status === 'Escalando' ? 'bg-green-400 animate-pulse' : 'bg-emerald-400'}`}></span>
-      {status}
-    </span>
+    <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-bold tracking-wide uppercase ${variants[variant]}`}>
+      {Icon && <Icon size={12} strokeWidth={3} />}
+      {text}
+    </div>
   );
+};
+
+const StatusToVariant = (status) => {
+  if (status === 'Escalando') return 'warning';
+  if (status === 'Validado') return 'success';
+  return 'default';
+};
+
+const StatusToIcon = (status) => {
+  if (status === 'Escalando') return Flame;
+  if (status === 'Validado') return CheckCircle;
+  return Clock;
 };
 
 const PlatformBadge = ({ platform }) => {
@@ -29,30 +47,41 @@ const PlatformBadge = ({ platform }) => {
   );
 };
 
+// --- FIM COMPONENTES DE DESIGN ---
+
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
   const [loginError, setLoginError] = useState(false);
 
+  // Navegação
+  const [activeTab, setActiveTab] = useState('dashboard');
+  
+  // Dados
   const [ads, setAds] = useState([]);
+  const [savedAds, setSavedAds] = useState([]);
+  
+  // Filtros
+  const [minDaysFilter, setMinDaysFilter] = useState(0);
+  const [mediaTypeFilter, setMediaTypeFilter] = useState('ALL');
+
+  // Estado da Mineração
   const [isMining, setIsMining] = useState(false);
   const [miningKeyword, setMiningKeyword] = useState('');
   const [miningError, setMiningError] = useState('');
   const [systemLogs, setSystemLogs] = useState([]);
-  const [showSettings, setShowSettings] = useState(false);
   
   // APIs
   const [apifyToken, setApifyToken] = useState('');
   const [actorId, setActorId] = useState('dz_omar/facebook-ads-scraper-pro'); 
-  
-  // IA Settings
-  const [aiProvider, setAiProvider] = useState('chatgpt'); // Default alterado para chatgpt
+  const [aiProvider, setAiProvider] = useState('chatgpt'); 
   const [geminiToken, setGeminiToken] = useState('');
   const [chatGptToken, setChatGptToken] = useState('');
 
   // Modal e IA
   const [selectedAd, setSelectedAd] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [aiAnalysisType, setAiAnalysisType] = useState(''); 
   const [aiFeedback, setAiFeedback] = useState("");
 
   const addLog = (msg, type = 'info') => {
@@ -65,12 +94,14 @@ export default function App() {
     const savedProvider = localStorage.getItem('adsniper_ai_provider');
     const savedGeminiToken = localStorage.getItem('adsniper_gemini_token');
     const savedGptToken = localStorage.getItem('adsniper_gpt_token');
+    const savedVault = localStorage.getItem('adsniper_vault');
     
     if (savedToken) setApifyToken(savedToken);
     if (savedActor) setActorId(savedActor);
     if (savedProvider) setAiProvider(savedProvider);
     if (savedGeminiToken && !savedGeminiToken.startsWith('//')) setGeminiToken(savedGeminiToken);
     if (savedGptToken) setChatGptToken(savedGptToken);
+    if (savedVault) setSavedAds(JSON.parse(savedVault));
   }, []);
 
   const handleSaveSettings = () => {
@@ -78,27 +109,39 @@ export default function App() {
     localStorage.setItem('adsniper_apify_actor', actorId.trim());
     localStorage.setItem('adsniper_ai_provider', aiProvider);
     
-    if (geminiToken.trim() !== '') localStorage.setItem('adsniper_gemini_token', geminiToken.trim());
+    const cleanGeminiToken = geminiToken.trim();
+    if (cleanGeminiToken !== '') localStorage.setItem('adsniper_gemini_token', cleanGeminiToken);
     else localStorage.removeItem('adsniper_gemini_token');
 
     if (chatGptToken.trim() !== '') localStorage.setItem('adsniper_gpt_token', chatGptToken.trim());
     else localStorage.removeItem('adsniper_gpt_token');
 
-    setShowSettings(false);
+    setActiveTab('dashboard');
     addLog('Configurações guardadas com sucesso.', 'success');
   };
 
+  // Lógica do Cofre
+  const toggleSaveAd = (ad, e) => {
+    e.stopPropagation(); 
+    setSavedAds(prev => {
+        let newSaved;
+        if (prev.find(a => a.id === ad.id)) newSaved = prev.filter(a => a.id !== ad.id);
+        else newSaved = [...prev, ad];
+        localStorage.setItem('adsniper_vault', JSON.stringify(newSaved));
+        return newSaved;
+    });
+  };
+
+  const isAdSaved = (id) => savedAds.some(ad => ad.id === id);
+
+  // IA Functions
   const callChatGPT = async (prompt, token) => {
     if (!token) throw new Error("Chave da OpenAI (ChatGPT) não configurada.");
-    
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-        },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({
-            model: 'gpt-4o-mini', // Modelo ultra-rápido e económico da OpenAI
+            model: 'gpt-4o-mini', 
             messages: [
                 { role: 'system', content: 'Você é um Especialista de Elite em Facebook Ads e Copywriting.' },
                 { role: 'user', content: prompt }
@@ -106,12 +149,11 @@ export default function App() {
             temperature: 0.7
         })
     });
-
     if (!response.ok) {
         const err = await response.json().catch(() => ({}));
+        if (response.status === 429 || err.error?.type === 'insufficient_quota') throw new Error("Saldo esgotado na OpenAI (ChatGPT). Por favor adicione fundos na plataforma da OpenAI.");
         throw new Error(err.error?.message || "Erro de ligação à OpenAI");
     }
-
     const data = await response.json();
     return data.choices[0].message.content;
   };
@@ -120,281 +162,156 @@ export default function App() {
     let apiKey = token || "";
     let modelOptions = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-pro"];
     if (!apiKey) modelOptions = ["gemini-2.5-flash-preview-09-2025"];
-
     const delays = [1000, 2000, 4000];
-    let attempt = 0;
-    let currentModelIndex = 0;
-    
+    let attempt = 0; let currentModelIndex = 0;
     while (attempt <= retries) {
         try {
             const model = modelOptions[currentModelIndex];
             const endpointUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-
             const response = await fetch(endpointUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
             });
-            
             if (!response.ok) {
                 const errData = await response.json().catch(() => ({}));
-                const errMsg = errData.error?.message || `Erro ${response.status} na Google Gemini`;
-                
-                if (response.status === 404 && currentModelIndex < modelOptions.length - 1) {
-                    currentModelIndex++;
-                    continue; 
-                }
-                throw new Error(errMsg);
+                if (response.status === 404 && currentModelIndex < modelOptions.length - 1) { currentModelIndex++; continue; }
+                throw new Error(errData.error?.message || `Erro ${response.status} na Google Gemini`);
             }
             const data = await response.json();
             return data.candidates?.[0]?.content?.parts?.[0]?.text || "Resposta vazia da IA.";
         } catch (err) {
-            if (err.message.includes('Failed to fetch')) {
-                throw new Error("O seu navegador ou AdBlocker bloqueou a Google API.");
-            }
+            if (err.message.includes('Failed to fetch')) throw new Error("O seu navegador ou AdBlocker bloqueou a Google API.");
             if (attempt === retries) throw new Error(`Falha Gemini: ${err.message}`);
-            await new Promise(r => setTimeout(r, delays[attempt]));
-            attempt++;
+            await new Promise(r => setTimeout(r, delays[attempt])); attempt++;
         }
     }
   };
 
-  const analyzeAdWithAI = async (ad) => {
+  const analyzeAdWithAI = async (ad, type = 'copy') => {
     const isVercel = window.location.hostname !== 'localhost' && !window.location.hostname.includes('google');
-    
     if (isVercel) {
-       if (aiProvider === 'gemini' && !geminiToken.trim()) {
-           alert("Por favor, adicione a sua Chave API do Gemini nas Configurações."); return;
-       }
-       if (aiProvider === 'chatgpt' && !chatGptToken.trim()) {
-           alert("Por favor, adicione a sua Chave API do ChatGPT (OpenAI) nas Configurações."); return;
-       }
+       if (aiProvider === 'gemini' && !geminiToken.trim()) { alert("Configure a Chave API do Gemini nas Configurações."); return; }
+       if (aiProvider === 'chatgpt' && !chatGptToken.trim()) { alert("Configure a Chave API do ChatGPT nas Configurações."); return; }
     }
-
-    setIsAnalyzing(true);
-    setAiFeedback("");
+    setIsAnalyzing(true); setAiAnalysisType(type); setAiFeedback("");
     
-    const prompt = `Atue como um Especialista de Elite em Facebook Ads e Copywriting. Analise este anúncio de Alta Conversão:
-    
-Anunciante: ${ad.advertiser}
-Produto/Nicho: ${ad.title}
-Copy Atual: "${ad.copy}"
-
-Forneça um relatório direto contendo:
-1. PONTOS FORTES: O que está bom nesta copy.
-2. PONTOS FRACOS: O que está a fazer o anunciante perder dinheiro.
-3. COPY OTIMIZADA: Reescreva o texto focando em alta conversão (utilize frameworks como AIDA ou PAS) com emojis estratégicos e um Call To Action irresistível.`;
+    let prompt = type === 'copy' 
+        ? `Atue como Especialista de Facebook Ads. Analise: Anunciante: ${ad.advertiser}, Copy: "${ad.copy}". Dê: 1. PONTOS FORTES 2. PONTOS FRACOS 3. COPY OTIMIZADA (AIDA/PAS com emojis e CTA).`
+        : `Atue como Roteirista de Vídeos (TikTok/VSL). Baseado nisto: "${ad.copy}". Crie um Roteiro Curto (30-60s): 1. HOOK 2. PROBLEMA 3. SOLUÇÃO 4. CTA.`;
 
     try {
-        let feedback = "";
-        if (aiProvider === 'chatgpt') {
-            feedback = await callChatGPT(prompt, chatGptToken.trim());
-        } else {
-            feedback = await callGeminiWithRetry(prompt, geminiToken.trim());
-        }
+        let feedback = aiProvider === 'chatgpt' ? await callChatGPT(prompt, chatGptToken.trim()) : await callGeminiWithRetry(prompt, geminiToken.trim());
         setAiFeedback(feedback);
-    } catch (err) {
-        setAiFeedback("Erro ao analisar: " + err.message);
-    } finally {
-        setIsAnalyzing(false);
-    }
+    } catch (err) { setAiFeedback(err.message); } 
+    finally { setIsAnalyzing(false); }
   };
 
   const startMining = async () => {
-    setMiningError('');
-    setSystemLogs([]);
-    const token = apifyToken.trim();
-    const actor = actorId.trim();
+    setMiningError(''); setSystemLogs([]);
+    const token = apifyToken.trim(); const actor = actorId.trim();
+    if (!token) { setMiningError("Configure o Token da Apify nas Configurações."); return; }
+    if (!miningKeyword.trim()) { setMiningError("Introduza uma palavra-chave."); return; }
 
-    if (!token) {
-      setMiningError("Configure o seu Token da Apify nas Configurações da API.");
-      return;
-    }
-    if (!miningKeyword.trim()) {
-      setMiningError("Por favor, introduza uma palavra-chave para minerar.");
-      return;
-    }
-
-    setIsMining(true);
-    addLog('A iniciar ligação com a API da Apify...');
+    setActiveTab('dashboard'); setIsMining(true);
+    addLog('A iniciar ligação com a Apify...');
 
     const safeActorId = actor.replace('/', '~');
     
     try {
-      let payload = {};
-      const keywordEncoded = encodeURIComponent(miningKeyword.trim());
-      
-      if (safeActorId.includes('dz_omar') || safeActorId.includes('20nRTxLD3a3jIlZbZ')) {
-        payload = {
+      let payload = {
           searchQueries: [miningKeyword.trim()], 
-          countries: "BR",                       
-          activeStatus: "ACTIVE",                
-          adType: "ALL",                         
-          maxResultsPerQuery: 30                 
-        };
-      } else if (safeActorId.includes('3853UUZQG6pjjdw11') || safeActorId.includes('memo23')) {
-        payload = {
-          startUrls: [
-            { url: `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=BR&q=${keywordEncoded}&search_type=keyword_exact_phrase` }
-          ],
-          proxyConfiguration: {
-            useApifyProxy: true,
-            apifyProxyGroups: ["RESIDENTIAL"] 
-          },
-          maxItems: 30 
-        };
-      } else {
-        payload = {
-          startUrls: [
-            { url: `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=BR&q=${keywordEncoded}` }
-          ],
-          resultsLimit: 20
-        };
-      }
+          countries: "BR", activeStatus: "ACTIVE", adType: "ALL", maxResultsPerQuery: 30                 
+      };
 
-      addLog(`Robô detetado: enviando pacote de dados compatível...`);
-
+      addLog(`Robô detetado: enviando pesquisa...`);
       const runResponse = await fetch(`https://api.apify.com/v2/acts/${safeActorId}/runs?token=${token}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
       });
 
       if (!runResponse.ok) {
-         if (runResponse.status === 403) {
-             throw new Error("Erro 403: Acesso Proibido. O seu token não tem permissão. Vá ao site da Apify e certifique-se de que adicionou/subscreveu este Actor à sua conta.");
-         }
          const err = await runResponse.json();
-         throw new Error(`Erro ${runResponse.status}: ${err.error?.message || "Token inválido ou acesso negado."}`);
+         throw new Error(`Erro ${runResponse.status}: ${err.error?.message || "Acesso negado."}`);
       }
       
       const runData = await runResponse.json();
-      
-      if (!runData || !runData.data || !runData.data.id) {
-          throw new Error("A resposta da Apify foi bem-sucedida, mas não devolveu um ID de execução. Verifique as configurações.");
-      }
-
       const runId = runData.data.id;
-      addLog(`Tarefa criada na Apify (ID: ${runId}). A aguardar resultados...`);
+      addLog(`Tarefa Apify criada (ID: ${runId}). A aguardar...`);
 
       let finished = false;
       while (!finished) {
         await new Promise(r => setTimeout(r, 4000));
         const statusRes = await fetch(`https://api.apify.com/v2/acts/${safeActorId}/runs/${runId}?token=${token}`);
-        
-        if (!statusRes.ok) {
-           addLog(`Aviso: Falha ao verificar o estado. Código: ${statusRes.status}`, 'warning');
-           continue; 
-        }
-
+        if (!statusRes.ok) continue; 
         const statusData = await statusRes.json();
-        
-        if (statusData.data.status === 'SUCCEEDED') {
-            finished = true;
-            addLog('Extração concluída na Apify!');
-        } else if (['FAILED', 'ABORTED'].includes(statusData.data.status)) {
-            const errorMessage = statusData.data.statusMessage || "O robô encontrou um erro crítico. Vá ao site da Apify > Runs > Log.";
-            throw new Error(`ESTADO FAILED: ${errorMessage}`);
-        } else {
-            addLog(`Estado atual: ${statusData.data.status}... a recolher dados.`);
-        }
+        if (statusData.data.status === 'SUCCEEDED') { finished = true; addLog('Extração concluída!'); } 
+        else if (['FAILED', 'ABORTED'].includes(statusData.data.status)) throw new Error(`ESTADO FAILED: ${statusData.data.statusMessage}`);
       }
 
-      addLog('A transferir o ficheiro de anúncios encontrado...');
+      addLog('A transferir dados...');
       const datasetRes = await fetch(`https://api.apify.com/v2/datasets/${runData.data.defaultDatasetId}/items?token=${token}`);
       const rawAds = await datasetRes.json();
       
       if (rawAds.length === 0) {
-        addLog('A tarefa terminou, mas o robô não retornou dados (0 anúncios).', 'warning');
-        setMiningError("A mineração foi concluída, mas não foram encontrados anúncios ativos para esta palavra-chave. (Tente usar palavras mais genéricas).");
-        setIsMining(false);
-        return;
+        setMiningError("Mineração concluída, mas 0 anúncios ativos encontrados.");
+        setIsMining(false); return;
       }
 
-      if (rawAds.length > 0 && rawAds[0].error) {
-        const errDesc = rawAds[0].errorDescription || "";
-        if (errDesc.includes("Empty or private data")) {
-             throw new Error("Bloqueio Anti-Robô do Facebook! A Apify precisa de 'Proxies Residenciais' para ler esta página e não ser bloqueada pelo Facebook.");
-        }
-        throw new Error(`A Apify falhou ao ler a página: ${errDesc || "Erro bloqueado pelo Facebook"}`);
-      }
-
-      const validAds = rawAds.filter(rawAd => {
-          if (rawAd.error) return false;
-          if (rawAd.type === 'summary' || rawAd.type === 'query_complete' || rawAd.type === 'complete' || rawAd.type === 'log') return false;
-          return true;
-      });
-
-      if (validAds.length === 0) {
-        throw new Error("Os resultados retornados pela Apify contêm apenas logs ou erros, nenhum anúncio válido.");
-      }
+      const validAds = rawAds.filter(rawAd => !rawAd.error && rawAd.type !== 'summary' && rawAd.type !== 'query_complete' && rawAd.type !== 'complete' && rawAd.type !== 'log');
+      if (validAds.length === 0) throw new Error("Apenas logs/erros retornados.");
 
       let adsToProcess = [];
       validAds.forEach(rawAd => {
-          if (rawAd.type === 'batch' && rawAd.ads && Array.isArray(rawAd.ads)) {
-              adsToProcess = [...adsToProcess, ...rawAd.ads];
-          } else if (!rawAd.type || rawAd.page_id || rawAd.id || rawAd.node || rawAd.ad) { 
-              adsToProcess.push(rawAd);
-          }
+          if (rawAd.type === 'batch' && rawAd.ads && Array.isArray(rawAd.ads)) adsToProcess = [...adsToProcess, ...rawAd.ads];
+          else if (!rawAd.type || rawAd.page_id || rawAd.id || rawAd.node || rawAd.ad) adsToProcess.push(rawAd);
       });
-
       if (adsToProcess.length === 0) adsToProcess = validAds; 
 
-      addLog(`Sucesso total! ${adsToProcess.length} anúncios transferidos.`, 'success');
+      addLog(`Sucesso! ${adsToProcess.length} anúncios transferidos.`, 'success');
 
       const formattedAds = adsToProcess.map((rawData, index) => {
         const coreItem = rawData.node || rawData.ad?.snapshot || rawData.ad || rawData.data || rawData;
         const rootItem = rawData;
 
-        // 1. Anunciante
-        const advertiser = coreItem.pageName || coreItem.page_name || rootItem.page_name || rootItem.pageName || coreItem.publisherPlatform || coreItem.profileName || coreItem.advertiser_name || "Anunciante Oculto";
+        const advertiser = coreItem.pageName || coreItem.page_name || rootItem.page_name || "Anunciante Oculto";
         
-        // 2. Texto da Copy
-        let copyText = coreItem.text || coreItem.primaryText || coreItem.message || coreItem.body?.text || coreItem.body || coreItem.caption || rootItem.text || "";
-        if (!copyText && coreItem.bodies && coreItem.bodies.length > 0) copyText = coreItem.bodies[0].text || coreItem.bodies[0];
-        if (!copyText && coreItem.adCreativeBodies && coreItem.adCreativeBodies.length > 0) copyText = coreItem.adCreativeBodies[0].text || coreItem.adCreativeBodies[0];
+        let profilePic = coreItem.page_profile_picture_url || rootItem.page_profile_picture_url || coreItem.profile_picture_url;
+        if (!profilePic && rootItem.ad?.page_profile_picture_url) profilePic = rootItem.ad.page_profile_picture_url;
+
+        let copyText = coreItem.text || coreItem.primaryText || coreItem.message || coreItem.body?.text || rootItem.text || "";
+        if (!copyText && coreItem.bodies?.length > 0) copyText = coreItem.bodies[0].text || coreItem.bodies[0];
         if (typeof copyText === 'object') copyText = JSON.stringify(copyText);
         if (!copyText || copyText.trim() === "") copyText = "Sem descrição disponível na biblioteca.";
 
-        // 3. Título
         let title = coreItem.title || coreItem.headline || rootItem.title || "";
-        if (!title && coreItem.titles && coreItem.titles.length > 0) title = coreItem.titles[0].text || coreItem.titles[0];
-        if (!title && coreItem.adCreativeLinkTitles && coreItem.adCreativeLinkTitles.length > 0) title = coreItem.adCreativeLinkTitles[0].text || coreItem.adCreativeLinkTitles[0];
-        if (!title && advertiser !== "Anunciante Oculto") title = `Anúncio de ${advertiser}`;
-        if (!title || typeof title === 'object') title = "Oferta Encontrada";
+        if (!title && coreItem.titles?.length > 0) title = coreItem.titles[0].text || coreItem.titles[0];
 
-        // 4. Link de Destino Inteligente Avançado (Caça ao Cloaker/VSL)
-        let targetUrl = coreItem.snapshot?.cards?.[0]?.link_url || coreItem.cards?.[0]?.link_url || coreItem.snapshot?.link_url || coreItem.link_url || rootItem.link_url || rootItem.ad_url || rootItem.page_url || "";
-        
-        const urlRegex = /(https?:\/\/[^\s]+)/g;
-        const linksInCopy = copyText.match(urlRegex) || [];
-        
-        if (linksInCopy.length > 0) {
-            const nonSocialLink = linksInCopy.find(l => !l.includes('wa.me') && !l.includes('whatsapp.com') && !l.includes('facebook.com') && !l.includes('fb.me'));
-            if (nonSocialLink) {
-                targetUrl = nonSocialLink; 
-            } else if (!targetUrl || targetUrl.includes('facebook.com') || targetUrl.includes('fb.me')) {
-                targetUrl = linksInCopy[0]; 
-            }
-        } else if (coreItem.caption && coreItem.caption.includes('.') && !coreItem.caption.includes(' ')) {
-            if (!targetUrl || targetUrl.includes('facebook.com')) {
-                targetUrl = coreItem.caption.startsWith('http') ? coreItem.caption : `https://${coreItem.caption}`;
-            }
+        // Extração Inteligente de Preço (Em Reais)
+        let ticketPrice = "Oculto";
+        const priceRegex = /(?:R\$|R\$\s)\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)/i;
+        const priceMatch = copyText.match(priceRegex);
+        if (priceMatch) ticketPrice = `R$ ${priceMatch[1]}`;
+
+        // Extração Inteligente de Nicho (Baseado na Copy)
+        let niche = "Geral";
+        const copyLower = copyText.toLowerCase();
+        if (copyLower.includes('curso') || copyLower.includes('aula') || copyLower.includes('aprender') || copyLower.includes('método')) niche = "Educação";
+        else if (copyLower.includes('emagrecer') || copyLower.includes('pele') || copyLower.includes('cabelo') || copyLower.includes('dores')) niche = "Saúde/Beleza";
+        else if (copyLower.includes('aposta') || copyLower.includes('bet') || copyLower.includes('cassino') || copyLower.includes('slot')) niche = "iGaming";
+        else if (copyLower.includes('frete') || copyLower.includes('loja') || copyLower.includes('desconto')) niche = "E-commerce";
+        else if (copyLower.includes('jesus') || copyLower.includes('cristã') || copyLower.includes('igreja')) niche = "Religião";
+
+        let targetUrl = coreItem.snapshot?.cards?.[0]?.link_url || coreItem.link_url || rootItem.link_url || "";
+        const linksInCopy = copyText.match(/(https?:\/\/[^\s]+)/g) || [];
+        if (linksInCopy.length > 0 && (!targetUrl || targetUrl.includes('facebook'))) {
+            targetUrl = linksInCopy.find(l => !l.includes('wa.me') && !l.includes('facebook')) || linksInCopy[0];
         }
 
-        // 5. Extrair Datas & Status
         let startDateRaw = coreItem.start_date || rootItem.start_date || coreItem.creation_time;
         let daysActive = 1;
         if (startDateRaw) {
             try {
-                let startObj;
-                if (typeof startDateRaw === 'number') {
-                    startObj = new Date(startDateRaw > 9999999999 ? startDateRaw : startDateRaw * 1000);
-                } else {
-                    startObj = new Date(startDateRaw);
-                }
-                const diffTime = Math.abs(new Date() - startObj);
-                daysActive = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                let startObj = typeof startDateRaw === 'number' ? new Date(startDateRaw > 9999999999 ? startDateRaw : startDateRaw * 1000) : new Date(startDateRaw);
+                daysActive = Math.ceil(Math.abs(new Date() - startObj) / (1000 * 60 * 60 * 24));
             } catch(e) { daysActive = 1; }
         }
 
@@ -402,102 +319,54 @@ Forneça um relatório direto contendo:
         if (daysActive > 10) adStatus = "Escalando";
         else if (daysActive >= 3) adStatus = "Validado";
 
-        // 6. Vídeo Real
         let videoUrl = coreItem.video_url || coreItem.videoUrl || coreItem.videoHdUrl || rootItem.video_url || null;
-        if (!videoUrl && coreItem.media && coreItem.media.video_url) videoUrl = coreItem.media.video_url;
-        if (!videoUrl && coreItem.videos && coreItem.videos.length > 0) {
-            videoUrl = coreItem.videos[0].video_hd_url || coreItem.videos[0].video_sd_url || coreItem.videos[0].video_url || coreItem.videos[0].videoHdUrl || coreItem.videos[0].videoSdUrl || coreItem.videos[0].url || (typeof coreItem.videos[0] === 'string' ? coreItem.videos[0] : null);
-        }
-        if (!videoUrl && rootItem.media?.videos && rootItem.media.videos.length > 0) {
-            videoUrl = rootItem.media.videos[0].video_hd_url || rootItem.media.videos[0].video_sd_url;
-        }
+        if (!videoUrl && coreItem.videos?.length > 0) videoUrl = coreItem.videos[0].video_hd_url || coreItem.videos[0].video_url || coreItem.videos[0].url || (typeof coreItem.videos[0] === 'string' ? coreItem.videos[0] : null);
 
-        // 7. Imagem / Thumbnail
-        let mediaUrl = null;
-        if (rootItem.media) mediaUrl = rootItem.media.primary_thumbnail || rootItem.media.video_preview_image_url || rootItem.media.image_url || rootItem.media.thumbnail_url;
-        if (!mediaUrl && coreItem.media) {
-            mediaUrl = coreItem.media.primary_thumbnail || coreItem.media.video_preview_image_url || coreItem.media.image_url || coreItem.media.thumbnail_url;
-            if(!mediaUrl && coreItem.media.images && coreItem.media.images.length > 0) mediaUrl = coreItem.media.images[0];
-        }
-        if (!mediaUrl && coreItem.images && coreItem.images.length > 0) {
-          mediaUrl = coreItem.images[0].originalImageUrl || coreItem.images[0].resizedImageUrls?.[0]?.url || coreItem.images[0].url || (typeof coreItem.images[0] === 'string' ? coreItem.images[0] : null);
-        }
-        if (!mediaUrl && coreItem.snapshot && coreItem.snapshot.images && coreItem.snapshot.images.length > 0) mediaUrl = coreItem.snapshot.images[0].url; 
-        if (!mediaUrl && coreItem.adCreativeMedia && coreItem.adCreativeMedia.length > 0) mediaUrl = coreItem.adCreativeMedia[0].image_url || coreItem.adCreativeMedia[0].imageUrl;
-        if (!mediaUrl && coreItem.videos && coreItem.videos.length > 0) mediaUrl = coreItem.videos[0].video_preview_image_url || coreItem.videos[0].videoPreviewImageUrl || coreItem.videos[0].previewUrl || coreItem.videos[0].imageUrl || coreItem.videos[0].coverUrl || (typeof coreItem.videos[0] === 'string' ? coreItem.videos[0] : null);
-        if (!mediaUrl) mediaUrl = coreItem.image_url || coreItem.imageUrl || coreItem.thumbnailUrl || coreItem.thumbnail_url || coreItem.picture || coreItem.image || coreItem.cover_image || rootItem.page_profile_picture_url;
+        let mediaUrl = rootItem.media?.primary_thumbnail || coreItem.media?.primary_thumbnail || coreItem.image_url || rootItem.image_url;
+        if (!mediaUrl && coreItem.images?.length > 0) mediaUrl = coreItem.images[0].originalImageUrl || coreItem.images[0].url || (typeof coreItem.images[0] === 'string' ? coreItem.images[0] : null);
         
-        if (!mediaUrl || !videoUrl) {
-            const jsonStr = JSON.stringify(rawData);
-            if (!mediaUrl) {
-                const imgMatch = jsonStr.match(/https:\/\/[^"]+\.(jpg|jpeg|png|webp)/i);
-                if (imgMatch) mediaUrl = imgMatch[0];
-            }
-            if (!videoUrl) {
-                const vidMatch = jsonStr.match(/https:\/\/[^"]+\.mp4[^"]*/i);
-                if (vidMatch) videoUrl = vidMatch[0];
-            }
-        }
-
-        let isVideo = videoUrl ? true : false;
-        if (!isVideo && coreItem.media && (coreItem.media.type === 'video' || coreItem.media.videos?.length > 0)) isVideo = true;
-        else if (coreItem.media_type === 'video') isVideo = true;
-        else if (coreItem.videos && coreItem.videos.length > 0) isVideo = true;
-        else if (coreItem.mediaType === 'video' || coreItem.display_format === 'VIDEO') isVideo = true;
-        else if (rootItem.media?.type === 'video') isVideo = true;
-
-        const platformsRaw = Array.isArray(rootItem.platforms) ? rootItem.platforms : Array.isArray(coreItem.publisherPlatforms) ? coreItem.publisherPlatforms : coreItem.platforms ? coreItem.platforms : ["FACEBOOK"];
-        const platformString = Array.isArray(platformsRaw) ? platformsRaw.join(', ') : platformsRaw;
+        let isVideo = videoUrl ? true : (coreItem.media?.type === 'video' || coreItem.media_type === 'video');
+        let formatType = isVideo ? "Vídeo VSL" : "Imagem/Carrossel";
 
         return {
-          id: Date.now() + index,
+          id: Date.now() + index + Math.random(),
           title: title,
           advertiser: advertiser,
+          profilePic: profilePic,
           copy: copyText,
           targetUrl: targetUrl,
           daysActive: daysActive,
-          platformCount: Array.isArray(platformsRaw) ? platformsRaw.length : 1,
-          niche: "Geral",
-          platform: platformString,
-          likesCount: rootItem.page_likes || coreItem.likeCount || coreItem.page_likes || Math.floor(Math.random() * 800) + 100,
+          ticketPrice: ticketPrice,
+          niche: niche,
+          formatType: formatType,
+          platformCount: Array.isArray(coreItem.publisherPlatforms) ? coreItem.publisherPlatforms.length : 1,
+          likesCount: rootItem.page_likes || coreItem.page_likes || Math.floor(Math.random() * 800) + 100,
           status: adStatus,
           type: isVideo ? "Vídeo" : "Imagem",
           mediaUrl: mediaUrl,
           videoUrl: videoUrl,
           color: "from-slate-700 to-slate-900",
           rawData: JSON.stringify(rawData, null, 2),
-          aiAnalysis: { 
-            persuasion: Math.floor(Math.random() * 15 + 80), 
-            retention: Math.floor(Math.random() * 20 + 70), 
-            cta: Math.floor(Math.random() * 10 + 85), 
-            appeal: "Direto" 
-          }
         };
       });
 
-      const sortedAds = formattedAds.sort((a, b) => {
-        if (a.status === 'Escalando' && b.status !== 'Escalando') return -1;
-        if (b.status === 'Escalando' && a.status !== 'Escalando') return 1;
-        if (a.status === 'Validado' && b.status === 'Teste') return -1;
-        if (b.status === 'Validado' && a.status === 'Teste') return 1;
-        return b.daysActive - a.daysActive; 
-      });
-
-      setAds(sortedAds);
+      setAds(formattedAds.sort((a, b) => b.daysActive - a.daysActive));
 
     } catch (error) {
-      console.error("Erro detetado:", error);
-      let displayError = error.message;
-      
-      if (error.message.includes('Failed to fetch')) {
-        displayError = "Erro de Ligação: O navegador bloqueou o acesso à API. Desligue o seu bloqueador de anúncios (AdBlock) para o site 'api.apify.com'.";
-      }
-
-      setMiningError(displayError);
-      addLog(`ERRO: ${displayError}`, 'error');
+      setMiningError(error.message);
+      addLog(`ERRO: ${error.message}`, 'error');
     } finally {
       setIsMining(false);
     }
+  };
+
+  const getDisplayedAds = () => {
+    const sourceAds = activeTab === 'vault' ? savedAds : ads;
+    return sourceAds.filter(ad => {
+        if (ad.daysActive < minDaysFilter) return false;
+        if (mediaTypeFilter !== 'ALL' && ad.type !== mediaTypeFilter) return false;
+        return true;
+    });
   };
 
   if (!isAuthenticated) {
@@ -505,34 +374,19 @@ Forneça um relatório direto contendo:
       <div className="flex h-screen w-full bg-slate-950 items-center justify-center p-4">
         <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-2xl relative overflow-hidden">
           <div className="absolute -top-24 -right-24 w-48 h-48 bg-green-500/10 rounded-full blur-3xl"></div>
-          
           <div className="relative z-10">
             <div className="flex flex-col items-center mb-8">
               <div className="w-16 h-16 bg-slate-950 border border-slate-800 rounded-2xl flex items-center justify-center mb-4 shadow-inner">
                 <Crosshair className="w-8 h-8 text-green-500" />
               </div>
               <h1 className="text-3xl font-bold text-white tracking-tight">Ad<span className="text-green-500">Sniper</span></h1>
-              <p className="text-slate-400 text-sm mt-2 text-center">Ambiente de espionagem. Senha: sniper2026</p>
             </div>
-
             <form onSubmit={(e) => { e.preventDefault(); if(passwordInput === 'sniper2026') setIsAuthenticated(true); else setLoginError(true); }} className="space-y-4">
               <div>
-                <div className="relative">
-                  <Lock className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                  <input 
-                    type="password" 
-                    placeholder="Chave de Acesso"
-                    className="w-full bg-slate-950 border border-slate-800 focus:border-green-500 text-white rounded-lg pl-10 pr-4 py-3 outline-none transition-colors"
-                    value={passwordInput}
-                    onChange={(e) => setPasswordInput(e.target.value)}
-                  />
-                </div>
-                {loginError && <p className="text-red-400 text-xs mt-2">Senha incorreta. Tente novamente.</p>}
+                <input type="password" placeholder="Chave de Acesso" className="w-full bg-slate-950 border border-slate-800 focus:border-green-500 text-white rounded-lg px-4 py-3 outline-none" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} />
+                {loginError && <p className="text-red-400 text-xs mt-2">Senha incorreta.</p>}
               </div>
-
-              <button type="submit" className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors">
-                Entrar no Radar <ArrowRight className="w-4 h-4" />
-              </button>
+              <button type="submit" className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-lg flex justify-center items-center gap-2">Entrar <ArrowRight className="w-4 h-4" /></button>
             </form>
           </div>
         </div>
@@ -541,135 +395,169 @@ Forneça um relatório direto contendo:
   }
 
   return (
-    <div className="flex h-screen bg-slate-950 text-slate-200">
+    <div className="flex h-screen bg-slate-950 text-slate-200 font-sans">
       <aside className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col p-6 hidden md:flex">
         <div className="flex items-center gap-2 text-green-500 font-bold text-2xl mb-8">
             <Crosshair className="w-7 h-7 text-green-500" /> <span>Ad<span className="text-white">Sniper</span></span>
         </div>
         <nav className="space-y-2 flex-1">
-          <button onClick={() => setShowSettings(false)} className={`w-full text-left p-3 rounded-lg flex items-center gap-3 transition-colors ${!showSettings ? 'bg-green-600/10 text-green-400 border border-green-500/20' : 'hover:bg-slate-800 text-slate-400'}`}>
+          <button onClick={() => setActiveTab('dashboard')} className={`w-full text-left p-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'dashboard' ? 'bg-green-600/10 text-green-400 border border-green-500/20' : 'hover:bg-slate-800 text-slate-400'}`}>
             <LayoutDashboard className="w-5 h-5"/> Painel de Ofertas
           </button>
-          <button onClick={() => setShowSettings(true)} className={`w-full text-left p-3 rounded-lg flex items-center gap-3 transition-colors ${showSettings ? 'bg-green-600/10 text-green-400 border border-green-500/20' : 'hover:bg-slate-800 text-slate-400'}`}>
-            <Settings className="w-5 h-5"/> API e Configurações
+          <button onClick={() => setActiveTab('vault')} className={`w-full text-left p-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'vault' ? 'bg-indigo-600/10 text-indigo-400 border border-indigo-500/20' : 'hover:bg-slate-800 text-slate-400'}`}>
+            <Bookmark className="w-5 h-5"/> Meu Cofre <span className="ml-auto bg-slate-800 text-xs px-2 py-0.5 rounded-full">{savedAds.length}</span>
+          </button>
+          <button onClick={() => setActiveTab('settings')} className={`w-full text-left p-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'settings' ? 'bg-slate-800 text-white border border-slate-700' : 'hover:bg-slate-800 text-slate-400'}`}>
+            <Settings className="w-5 h-5"/> Configurações
           </button>
         </nav>
       </aside>
 
       <main className="flex-1 overflow-y-auto p-4 md:p-8 relative">
-        {!showSettings ? (
-            <div className="max-w-6xl mx-auto">
+        {activeTab !== 'settings' ? (
+            <div className="max-w-7xl mx-auto">
               
-              <div className="flex flex-col md:flex-row gap-4 mb-8 bg-slate-900 p-4 rounded-2xl border border-slate-800 shadow-lg">
-                <div className="flex-1 flex items-center bg-slate-950 border border-slate-800 rounded-xl px-4 py-1 focus-within:border-green-500 transition-colors">
-                    <Zap className="w-5 h-5 text-green-500 mr-2" />
-                    <input 
-                      className="w-full bg-transparent p-2 text-white outline-none placeholder:text-slate-600" 
-                      placeholder="Digite um nicho (ex: emagrecer, apostas, frete grátis)..." 
-                      value={miningKeyword} 
-                      onChange={e => setMiningKeyword(e.target.value)} 
-                      onKeyDown={e => e.key === 'Enter' && startMining()}
-                      disabled={isMining}
-                    />
-                </div>
-                <button onClick={startMining} disabled={isMining} className="bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white px-8 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all">
-                    {isMining ? <><Loader2 className="animate-spin w-5 h-5"/> A processar...</> : 'Iniciar Radar'}
-                </button>
-              </div>
+              {activeTab === 'dashboard' && (
+                  <div className="flex flex-col md:flex-row gap-4 mb-6 bg-slate-900 p-4 rounded-2xl border border-slate-800 shadow-lg">
+                    <div className="flex-1 flex items-center bg-slate-950 border border-slate-800 rounded-xl px-4 py-1 focus-within:border-green-500 transition-colors">
+                        <Zap className="w-5 h-5 text-green-500 mr-2" />
+                        <input 
+                          className="w-full bg-transparent p-2 text-white outline-none placeholder:text-slate-600" 
+                          placeholder="Digite um nicho (ex: emagrecer, apostas, curso)..." 
+                          value={miningKeyword} 
+                          onChange={e => setMiningKeyword(e.target.value)} 
+                          onKeyDown={e => e.key === 'Enter' && startMining()}
+                          disabled={isMining}
+                        />
+                    </div>
+                    <button onClick={startMining} disabled={isMining} className="bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white px-8 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all">
+                        {isMining ? <><Loader2 className="animate-spin w-5 h-5"/> Procurar...</> : 'Iniciar Radar'}
+                    </button>
+                  </div>
+              )}
 
-              {miningError && (
+              {/* BARRA DE FILTROS */}
+              {(ads.length > 0 || activeTab === 'vault') && (
+                  <div className="mb-8 flex flex-wrap items-center gap-4 bg-slate-900/50 p-4 rounded-xl border border-slate-800/50">
+                      <div className="flex items-center gap-2 text-slate-400 text-sm font-bold mr-2">
+                          <Filter className="w-4 h-4"/> Filtros:
+                      </div>
+                      <div className="flex items-center gap-3 bg-slate-950 px-4 py-2 rounded-lg border border-slate-800">
+                          <span className="text-xs text-slate-500 font-bold uppercase">Tempo no Ar:</span>
+                          <input type="range" min="0" max="30" step="1" value={minDaysFilter} onChange={(e) => setMinDaysFilter(Number(e.target.value))} className="w-24 accent-green-500" />
+                          <span className="text-sm font-bold text-green-400 w-12 text-right">+{minDaysFilter}d</span>
+                      </div>
+                      <div className="flex items-center gap-3 bg-slate-950 px-4 py-2 rounded-lg border border-slate-800">
+                          <span className="text-xs text-slate-500 font-bold uppercase">Formato:</span>
+                          <select value={mediaTypeFilter} onChange={(e) => setMediaTypeFilter(e.target.value)} className="bg-transparent text-sm font-bold text-white outline-none cursor-pointer">
+                              <option value="ALL">Todos</option>
+                              <option value="Vídeo">Apenas Vídeos</option>
+                              <option value="Imagem">Apenas Imagens</option>
+                          </select>
+                      </div>
+                  </div>
+              )}
+
+              {activeTab === 'vault' && savedAds.length === 0 && (
+                 <div className="text-center py-20">
+                    <Bookmark className="w-20 h-20 text-slate-800 mx-auto mb-4" />
+                    <h2 className="text-2xl font-bold text-slate-500">O seu cofre está vazio</h2>
+                    <p className="text-slate-600 mt-2">Clique no ícone de coração nos anúncios do Radar para guardá-los aqui.</p>
+                 </div>
+              )}
+
+              {miningError && activeTab === 'dashboard' && (
                  <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/30 flex items-start gap-4">
                     <AlertCircle className="w-6 h-6 text-red-500 shrink-0 mt-0.5" />
-                    <div>
-                      <h3 className="text-red-400 font-bold text-lg mb-1">Atenção Necessária</h3>
-                      <p className="text-slate-300 text-sm leading-relaxed">{miningError}</p>
-                    </div>
-                 </div>
-              )}
-              
-              {systemLogs.length > 0 && (
-                <div className="mb-8 p-4 bg-slate-900 rounded-xl border border-slate-800 font-mono text-xs shadow-inner">
-                    <div className="flex items-center gap-2 mb-3 text-slate-500 font-bold uppercase tracking-wider">
-                      <Terminal size={14}/> Logs do Sistema (Apify)
-                    </div>
-                    <div className="space-y-1">
-                      {systemLogs.map((log, i) => (
-                        <div key={i} className={`${log.type === 'error' ? 'text-red-400' : log.type === 'success' ? 'text-green-400' : log.type === 'warning' ? 'text-yellow-400' : 'text-slate-400'}`}>
-                          <span className="opacity-50 mr-2">[{log.time}]</span> {log.msg}
-                        </div>
-                      ))}
-                    </div>
-                </div>
-              )}
-
-              {ads.length === 0 && !isMining && !miningError && (
-                 <div className="text-center py-20">
-                    <Target className="w-20 h-20 text-slate-800 mx-auto mb-4" />
-                    <h2 className="text-2xl font-bold text-slate-500">O radar está limpo</h2>
-                    <p className="text-slate-600 mt-2">Introduza uma palavra-chave acima para encontrar anúncios reais.</p>
+                    <div><h3 className="text-red-400 font-bold text-lg mb-1">Atenção Necessária</h3><p className="text-slate-300 text-sm leading-relaxed">{miningError}</p></div>
                  </div>
               )}
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {ads.map(ad => (
-                  <div key={ad.id} className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden hover:border-green-500/50 transition-all group flex flex-col shadow-lg">
+              {/* GRELHA DE ANÚNCIOS (Design Fusion) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {getDisplayedAds().map(ad => (
+                  <div key={ad.id} onClick={() => setSelectedAd(ad)} className="bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden hover:border-green-500/50 hover:shadow-green-900/20 hover:shadow-2xl transition-all cursor-pointer flex flex-col group relative">
                     
-                    <div className={`h-48 w-full bg-gradient-to-br ${ad.color} relative flex items-center justify-center overflow-hidden`}>
-                      
-                      {ad.videoUrl ? (
-                          <video 
-                              src={ad.videoUrl} 
-                              controls
-                              muted loop playsInline
-                              referrerPolicy="no-referrer"
-                              className="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-300 z-0"
-                          />
-                      ) : ad.mediaUrl ? (
-                         <img 
-                            src={ad.mediaUrl} 
-                            alt="Criativo do Anúncio" 
-                            referrerPolicy="no-referrer" 
-                            onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                            className="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-300 z-0" 
-                         />
-                      ) : (
-                         <div className="absolute inset-0 bg-black/40 group-hover:bg-transparent transition-colors z-0"></div>
-                      )}
-                      
-                      {ad.type === 'Vídeo' && !ad.videoUrl ? (
-                        <PlayCircle className="w-14 h-14 text-white/90 drop-shadow-xl z-10 pointer-events-none" />
-                      ) : (
-                        !ad.mediaUrl && !ad.videoUrl && <ImageIcon className="w-14 h-14 text-white/60 z-10 pointer-events-none" />
-                      )}
-                      <div className="absolute top-3 left-3 z-10 pointer-events-none"><PlatformBadge platform={ad.platform} /></div>
+                    {/* Botão Salvar (Cofre) */}
+                    <button 
+                        onClick={(e) => toggleSaveAd(ad, e)}
+                        className="absolute top-4 right-4 z-20 bg-slate-900/80 backdrop-blur border border-slate-700 p-2 rounded-full hover:scale-110 transition-transform"
+                    >
+                        <Heart size={18} className={isAdSaved(ad.id) ? "fill-red-500 text-red-500" : "text-slate-400"} />
+                    </button>
+
+                    {/* Header: Avatar + Nome */}
+                    <div className="p-4 flex items-center justify-between border-b border-slate-800/50 bg-slate-900/50">
+                        <div className="flex items-center gap-3 overflow-hidden">
+                            {ad.profilePic ? (
+                                <img src={ad.profilePic} alt="Avatar" className="w-10 h-10 rounded-full border border-slate-700 object-cover" />
+                            ) : (
+                                <div className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-slate-400">
+                                    {ad.advertiser.charAt(0).toUpperCase()}
+                                </div>
+                            )}
+                            <div className="flex flex-col truncate">
+                                <span className="font-bold text-slate-200 truncate pr-8">{ad.advertiser}</span>
+                                <span className="text-xs text-slate-500 font-medium">Anunciante</span>
+                            </div>
+                        </div>
                     </div>
 
-                    <div className="p-5 flex-1 flex flex-col">
-                      <h3 className="font-bold text-white text-lg leading-tight line-clamp-2">{ad.title}</h3>
-                      <p className="text-xs text-green-400 font-medium mt-1 uppercase tracking-wide">{ad.advertiser}</p>
+                    {/* Media Container (Compacto) */}
+                    <div className={`h-48 w-full bg-slate-950 relative flex items-center justify-center overflow-hidden border-b border-slate-800`}>
+                      {ad.videoUrl ? (
+                          <video src={ad.videoUrl} muted loop autoPlay playsInline referrerPolicy="no-referrer" className="absolute inset-0 w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity z-0" />
+                      ) : ad.mediaUrl ? (
+                         <img src={ad.mediaUrl} alt="Criativo" referrerPolicy="no-referrer" onError={(e) => { e.currentTarget.style.display = 'none'; }} className="absolute inset-0 w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity z-0" />
+                      ) : ( <ImageIcon className="text-slate-800 w-12 h-12" /> )}
+                      {ad.type === 'Vídeo' && !ad.videoUrl && <PlayCircle className="w-12 h-12 text-white/50 z-10" />}
+                    </div>
+
+                    {/* Conteúdo do Anúncio */}
+                    <div className="p-4 flex-1 flex flex-col bg-slate-900">
                       
-                      <div className="mt-3 p-3 bg-slate-950 rounded-lg flex-1 border border-slate-800/50">
-                        <p className="text-sm text-slate-400 line-clamp-4 italic">"{ad.copy}"</p>
+                      {/* Badges de Categoria */}
+                      <div className="flex flex-wrap gap-2 mb-4">
+                          <FusionBadge text={ad.niche} />
+                          <FusionBadge text={ad.formatType} />
+                          <FusionBadge icon={StatusToIcon(ad.status)} text={ad.status} variant={StatusToVariant(ad.status)} />
                       </div>
 
-                      <div className="flex items-center gap-4 mt-4 mb-1 text-xs text-slate-400 font-medium px-1">
-                        <span className="flex items-center gap-1.5" title="Dias que o anúncio está no ar">
-                            <Calendar className="w-3.5 h-3.5 text-slate-500"/> {ad.daysActive} dias a rodar
-                        </span>
-                        <span className="flex items-center gap-1.5" title="Likes na Página">
-                            <ThumbsUp className="w-3.5 h-3.5 text-slate-500"/> {(ad.likesCount / 1000).toFixed(1)}k likes
-                        </span>
-                        <span className="flex items-center gap-1.5" title="Plataformas">
-                            <Layers className="w-3.5 h-3.5 text-slate-500"/> {ad.platformCount} redes
-                        </span>
+                      {/* Título e Copy */}
+                      <h3 className="font-bold text-white text-base leading-snug line-clamp-2 mb-2">
+                          {ad.title !== 'Oferta Encontrada' && ad.title !== `Anúncio de ${ad.advertiser}` ? ad.title : ad.copy.split('.')[0]}
+                      </h3>
+                      <p className="text-sm text-slate-400 line-clamp-3 leading-relaxed mb-4">
+                          {ad.copy}
+                      </p>
+
+                      <div className="mt-auto"></div>
+
+                      {/* Footer: Métricas (Estilo Fusion) */}
+                      <div className="grid grid-cols-3 gap-2 bg-slate-950 rounded-xl p-3 border border-slate-800/80">
+                          <div className="flex flex-col items-center justify-center text-center">
+                              <ThumbsUp size={14} className="text-indigo-400 mb-1" />
+                              <span className="text-white font-bold text-sm">{(ad.likesCount/1000).toFixed(1)}k</span>
+                              <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Likes</span>
+                          </div>
+                          <div className="flex flex-col items-center justify-center text-center border-l border-r border-slate-800">
+                              <Calendar size={14} className="text-green-400 mb-1" />
+                              <span className="text-white font-bold text-sm">{ad.daysActive}</span>
+                              <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Dias</span>
+                          </div>
+                          <div className="flex flex-col items-center justify-center text-center">
+                              <DollarSign size={14} className="text-emerald-400 mb-1" />
+                              <span className="text-white font-bold text-sm">{ad.ticketPrice}</span>
+                              <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Ticket</span>
+                          </div>
                       </div>
 
-                      <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
-                        <StatusBadge status={ad.status} />
-                        <button onClick={() => { setSelectedAd(ad); setAiFeedback(""); }} className="text-sm font-bold text-green-500 hover:text-green-400 flex items-center gap-1 transition-colors">
-                          <BarChart2 className="w-4 h-4" /> Detalhes
-                        </button>
+                      {/* Tempo de Extração Botão Falso */}
+                      <div className="flex items-center gap-2 mt-4 text-xs text-slate-500 font-medium">
+                          <Clock size={12} /> há poucos segundos
+                          <ExternalLink size={12} className="ml-auto hover:text-white" />
                       </div>
+
                     </div>
                   </div>
                 ))}
@@ -678,161 +566,125 @@ Forneça um relatório direto contendo:
         ) : (
             <div className="max-w-2xl bg-slate-900 border border-slate-800 rounded-xl p-8 shadow-xl">
                 <h2 className="text-2xl font-bold text-white mb-2 flex items-center gap-2"><Settings className="text-green-500"/> Configurações de API</h2>
-                <p className="text-slate-400 mb-8">Configure os seus robôs de extração para maximizar o poder de pesquisa.</p>
-                
-                <div className="space-y-6">
+                <div className="space-y-6 mt-8">
                   <div className="bg-slate-950 p-5 rounded-xl border border-slate-800">
-                    <h3 className="text-lg font-bold text-slate-200 mb-4 flex items-center gap-2"><Zap className="w-5 h-5 text-green-500"/> Extração (Apify)</h3>
-                    <label className="block text-sm font-bold text-slate-400 mb-2">Token da API (Apify)</label>
-                    <input 
-                      type="password" 
-                      value={apifyToken} 
-                      onChange={e => setApifyToken(e.target.value)} 
-                      placeholder="apify_api_..." 
-                      className="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-white outline-none focus:border-green-500 transition-colors mb-4" 
-                    />
-                    
-                    <label className="block text-sm font-bold text-slate-400 mb-2">ID do Actor (Robô)</label>
-                    <input 
-                      type="text" 
-                      value={actorId} 
-                      onChange={e => setActorId(e.target.value)} 
-                      className="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-slate-300 outline-none focus:border-green-500 transition-colors" 
-                    />
+                    <h3 className="text-lg font-bold text-slate-200 mb-4 flex items-center gap-2"><Zap className="text-green-500"/> Extração (Apify)</h3>
+                    <label className="block text-sm font-bold text-slate-400 mb-2">Token da API</label>
+                    <input type="password" value={apifyToken} onChange={e => setApifyToken(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-white outline-none mb-4" />
+                    <label className="block text-sm font-bold text-slate-400 mb-2">ID do Actor</label>
+                    <input type="text" value={actorId} onChange={e => setActorId(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-slate-300 outline-none" />
                   </div>
 
                   <div className="bg-slate-950 p-5 rounded-xl border border-slate-800">
-                    <h3 className="text-lg font-bold text-slate-200 mb-4 flex items-center gap-2"><Sparkles className="w-5 h-5 text-indigo-500"/> Cérebro IA (Análise de Copy)</h3>
-                    
-                    <label className="block text-sm font-bold text-slate-400 mb-2">Qual provedor de IA deseja usar?</label>
-                    <select 
-                        value={aiProvider}
-                        onChange={e => setAiProvider(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-white outline-none focus:border-indigo-500 mb-4"
-                    >
-                        <option value="chatgpt">ChatGPT / OpenAI (Recomendado)</option>
-                        <option value="gemini">Google Gemini (Gratuito)</option>
+                    <h3 className="text-lg font-bold text-slate-200 mb-4 flex items-center gap-2"><Sparkles className="text-indigo-500"/> Cérebro IA (Análise)</h3>
+                    <select value={aiProvider} onChange={e => setAiProvider(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-white outline-none mb-4">
+                        <option value="chatgpt">ChatGPT / OpenAI</option>
+                        <option value="gemini">Google Gemini</option>
                     </select>
-
-                    {aiProvider === 'chatgpt' ? (
-                        <>
-                            <label className="block text-sm font-bold text-slate-400 mb-2 mt-4">Chave de API do ChatGPT</label>
-                            <input 
-                                type="password" 
-                                value={chatGptToken} 
-                                onChange={e => setChatGptToken(e.target.value)} 
-                                placeholder="sk-proj-..." 
-                                className="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-white outline-none focus:border-indigo-500 transition-colors mb-2" 
-                            />
-                            <p className="text-xs text-slate-500">Gere a sua chave no painel <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer" className="text-indigo-400 hover:underline">platform.openai.com</a>. Garante respostas mais rápidas e sem bloqueios.</p>
-                        </>
-                    ) : (
-                        <>
-                            <label className="block text-sm font-bold text-slate-400 mb-2 mt-4">Chave de API do Gemini</label>
-                            <input 
-                                type="password" 
-                                value={geminiToken} 
-                                onChange={e => setGeminiToken(e.target.value)} 
-                                placeholder="AIzaSy... ou AQ..." 
-                                className="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-white outline-none focus:border-indigo-500 transition-colors mb-2" 
-                            />
-                            <p className="text-xs text-slate-500">Gere a sua chave no painel <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-indigo-400 hover:underline">Google AI Studio</a>.</p>
-                        </>
-                    )}
+                    <label className="block text-sm font-bold text-slate-400 mb-2 mt-4">Chave de API do {aiProvider === 'chatgpt' ? 'ChatGPT' : 'Gemini'}</label>
+                    <input type="password" value={aiProvider === 'chatgpt' ? chatGptToken : geminiToken} onChange={e => aiProvider === 'chatgpt' ? setChatGptToken(e.target.value) : setGeminiToken(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-white outline-none mb-2" />
                   </div>
-
-                  <button onClick={handleSaveSettings} className="bg-green-600 w-full hover:bg-green-500 px-8 py-4 rounded-xl text-white font-bold transition-colors mt-4">
-                    Guardar Todas as Configurações
-                  </button>
+                  <button onClick={handleSaveSettings} className="bg-green-600 w-full hover:bg-green-500 px-8 py-4 rounded-xl text-white font-bold transition-colors">Guardar Configurações</button>
                 </div>
             </div>
         )}
       </main>
 
+      {/* MODAL DETALHES (Estilo App) */}
       {selectedAd && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-3xl shadow-2xl p-6 flex flex-col max-h-[90vh]">
-            <div className="flex justify-between items-start mb-6 shrink-0">
-              <div>
-                <div className="flex items-center gap-3">
-                  <h2 className="font-bold text-2xl text-white">{selectedAd.advertiser}</h2>
-                  <StatusBadge status={selectedAd.status} />
-                </div>
-                <p className="text-slate-400 text-sm mt-1 flex items-center gap-3">
-                   <span><Calendar className="w-3.5 h-3.5 inline mr-1" /> Há {selectedAd.daysActive} dias no ar</span>
-                   <span><ThumbsUp className="w-3.5 h-3.5 inline mr-1" /> {(selectedAd.likesCount / 1000).toFixed(1)}k Seguidores</span>
-                </p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-sm" onClick={() => setSelectedAd(null)}>
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+            
+            {/* Header Modal */}
+            <div className="bg-slate-800/50 p-6 flex justify-between items-center border-b border-slate-800">
+              <div className="flex items-center gap-4">
+                  {selectedAd.profilePic ? (
+                      <img src={selectedAd.profilePic} className="w-12 h-12 rounded-full border-2 border-slate-700 object-cover" />
+                  ) : (
+                      <div className="w-12 h-12 rounded-full bg-slate-800 border-2 border-slate-700 flex items-center justify-center font-bold text-lg text-slate-400">{selectedAd.advertiser.charAt(0)}</div>
+                  )}
+                  <div>
+                      <h2 className="font-bold text-xl text-white leading-none mb-2">{selectedAd.advertiser}</h2>
+                      <div className="flex gap-2">
+                         <FusionBadge text={selectedAd.status} variant={StatusToVariant(selectedAd.status)} icon={StatusToIcon(selectedAd.status)} />
+                         <FusionBadge text={selectedAd.formatType} />
+                      </div>
+                  </div>
               </div>
-              <button onClick={() => { setSelectedAd(null); setAiFeedback(""); }} className="text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 p-2 rounded-lg transition-colors"><X className="w-5 h-5" /></button>
+              <button onClick={() => setSelectedAd(null)} className="text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 p-2.5 rounded-full transition-colors"><X size={20} /></button>
             </div>
             
-            <div className="bg-slate-950 p-5 rounded-xl mb-4 overflow-y-auto border border-slate-800 flex-1">
-              <h3 className="font-bold text-slate-500 uppercase text-xs mb-2">Copy Original</h3>
-              <p className="text-slate-300 whitespace-pre-wrap leading-relaxed">"{selectedAd.copy}"</p>
+            <div className="p-6 overflow-y-auto flex-1">
+              
+              <div className="grid grid-cols-3 gap-3 bg-slate-950 p-4 rounded-2xl border border-slate-800 mb-6">
+                  <div className="text-center">
+                      <p className="text-slate-500 text-[10px] font-bold uppercase mb-1">Dias no Ar</p>
+                      <p className="text-white font-bold text-lg">{selectedAd.daysActive}</p>
+                  </div>
+                  <div className="text-center border-l border-r border-slate-800">
+                      <p className="text-slate-500 text-[10px] font-bold uppercase mb-1">Página Likes</p>
+                      <p className="text-white font-bold text-lg">{(selectedAd.likesCount/1000).toFixed(1)}k</p>
+                  </div>
+                  <div className="text-center">
+                      <p className="text-slate-500 text-[10px] font-bold uppercase mb-1">Preço / Ticket</p>
+                      <p className="text-emerald-400 font-bold text-lg">{selectedAd.ticketPrice}</p>
+                  </div>
+              </div>
+
+              <div className="mb-6">
+                  <h3 className="font-bold text-slate-400 uppercase text-xs mb-3 flex items-center gap-2"><ImageIcon size={14}/> Copy do Anúncio</h3>
+                  <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 text-slate-300 text-sm whitespace-pre-wrap leading-relaxed">
+                      {selectedAd.copy}
+                  </div>
+              </div>
               
               {/* ÁREA DA INTELIGÊNCIA ARTIFICIAL */}
-              <div className="mt-8 border-t border-slate-800 pt-6">
-                 <div className="flex items-center justify-between mb-4">
+              <div className="bg-indigo-950/20 border border-indigo-500/20 rounded-2xl p-5 mb-6">
+                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
                     <h3 className="font-bold text-indigo-400 flex items-center gap-2">
-                       {aiProvider === 'chatgpt' ? <Bot className="w-5 h-5"/> : <Sparkles className="w-5 h-5"/>} Consultor de Copy IA
+                       {aiProvider === 'chatgpt' ? <Bot size={18}/> : <Sparkles size={18}/>} Inteligência Artificial
                     </h3>
-                    {!aiFeedback && !isAnalyzing && (
-                        <button onClick={() => analyzeAdWithAI(selectedAd)} className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 text-sm rounded-lg font-bold transition-colors shadow-lg shadow-indigo-500/20 flex items-center gap-2">
-                            Analisar com {aiProvider === 'chatgpt' ? 'ChatGPT' : 'Gemini'}
-                        </button>
+                    
+                    {!isAnalyzing && (
+                        <div className="flex gap-2">
+                            <button onClick={() => analyzeAdWithAI(selectedAd, 'copy')} className="bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white border border-indigo-500/30 px-3 py-1.5 text-xs rounded-lg font-bold transition-all flex items-center gap-1.5">
+                                <Sparkles size={14}/> Otimizar Copy
+                            </button>
+                            <button onClick={() => analyzeAdWithAI(selectedAd, 'script')} className="bg-fuchsia-600/20 hover:bg-fuchsia-600 text-fuchsia-300 hover:text-white border border-fuchsia-500/30 px-3 py-1.5 text-xs rounded-lg font-bold transition-all flex items-center gap-1.5">
+                                <Video size={14}/> Roteiro VSL
+                            </button>
+                        </div>
                     )}
                  </div>
                  
                  {isAnalyzing && (
-                    <div className="p-6 bg-indigo-500/10 border border-indigo-500/20 rounded-xl flex flex-col items-center justify-center text-indigo-400">
+                    <div className="py-8 flex flex-col items-center justify-center text-indigo-400">
                         <Loader2 className="w-8 h-8 animate-spin mb-3" />
-                        <p className="font-medium">O {aiProvider === 'chatgpt' ? 'ChatGPT' : 'Gemini'} está a dissecar esta Copy para si...</p>
+                        <p className="font-medium text-sm text-center">
+                            {aiAnalysisType === 'script' ? 'A fazer engenharia reversa para criar o Roteiro do Vídeo...' : 'A dissecar e otimizar esta Copy para Alta Conversão...'}
+                        </p>
                     </div>
                  )}
 
-                 {aiFeedback && (
-                    <div className="p-5 bg-indigo-950/30 border border-indigo-500/30 rounded-xl">
+                 {aiFeedback && !isAnalyzing && (
+                    <div className={`mt-4 p-4 rounded-xl border bg-slate-950/50 ${aiAnalysisType === 'script' ? 'border-fuchsia-500/30' : 'border-indigo-500/30'}`}>
                         <p className="text-slate-300 text-sm whitespace-pre-wrap leading-relaxed">{aiFeedback}</p>
                     </div>
                  )}
               </div>
 
-              {selectedAd.rawData && selectedAd.rawData !== "N/A - Anúncio Falso" && (
-                <details className="mt-8 border-t border-slate-800 pt-4">
-                  <summary className="text-xs text-slate-500 cursor-pointer font-bold hover:text-slate-300 flex items-center gap-1 w-max">
-                    <Code size={14}/> MODO PROGRAMADOR: Dados Crus (JSON)
-                  </summary>
-                  <pre className="text-[10px] text-emerald-400 mt-3 p-4 bg-black rounded-lg border border-slate-800 overflow-x-auto">
-                    {selectedAd.rawData}
-                  </pre>
-                </details>
-              )}
             </div>
 
-            {selectedAd.targetUrl && (
-                <a 
-                   href={selectedAd.targetUrl} 
-                   target="_blank" 
-                   rel="noreferrer" 
-                   className="shrink-0 mb-6 flex items-center justify-center gap-2 bg-green-600/10 hover:bg-green-600/20 text-green-400 border border-green-500/30 py-3 rounded-xl transition-colors font-bold text-sm"
-                >
-                    <ExternalLink size={16} /> Abrir Página de Destino do Anunciante
-                </a>
-            )}
-            
-            <div className="grid grid-cols-3 gap-4 text-center shrink-0">
-              <div className="bg-slate-800 p-4 rounded-xl border border-slate-700">
-                <div className="text-green-500 font-bold text-2xl">{selectedAd.aiAnalysis?.persuasion}%</div>
-                <div className="text-slate-400 text-xs font-bold uppercase mt-1">Persuasão</div>
-              </div>
-              <div className="bg-slate-800 p-4 rounded-xl border border-slate-700">
-                <div className="text-green-500 font-bold text-2xl">{selectedAd.aiAnalysis?.retention}%</div>
-                <div className="text-slate-400 text-xs font-bold uppercase mt-1">Retenção</div>
-              </div>
-              <div className="bg-slate-800 p-4 rounded-xl border border-slate-700">
-                <div className="text-green-500 font-bold text-2xl">{selectedAd.aiAnalysis?.cta}%</div>
-                <div className="text-slate-400 text-xs font-bold uppercase mt-1">Conversão</div>
-              </div>
+            <div className="p-4 bg-slate-900 border-t border-slate-800 flex gap-3">
+               {selectedAd.targetUrl ? (
+                   <a href={selectedAd.targetUrl} target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-2 bg-green-600 hover:bg-green-500 text-white py-3.5 rounded-xl transition-colors font-bold text-sm shadow-lg shadow-green-900/20">
+                       <ExternalLink size={18} /> Abrir Página de Vendas
+                   </a>
+               ) : (
+                   <button disabled className="flex-1 flex items-center justify-center gap-2 bg-slate-800 text-slate-500 py-3.5 rounded-xl font-bold text-sm cursor-not-allowed">
+                       Link Indisponível
+                   </button>
+               )}
             </div>
           </div>
         </div>
