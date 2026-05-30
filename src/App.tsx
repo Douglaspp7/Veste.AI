@@ -242,28 +242,29 @@ export default function App() {
     const safeActorId = actor.replace('/', '~');
     
     try {
+      // LIMITE SEGURO DE 150 ANÚNCIOS: Garante que não trava nos 85% por excesso de dados
       let payload = {
           searchQueries: [miningKeyword.trim()], 
           countries: "BR", activeStatus: "ACTIVE", adType: "ALL", 
-          maxResultsPerQuery: 600 // EXPANDIDO: Mais fundo na biblioteca de anúncios
+          maxResultsPerQuery: 150 
       };
 
       if (safeActorId.includes('3853UUZQG6pjjdw11') || safeActorId.includes('memo23')) {
           payload = {
               startUrls: [{ url: `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=BR&q=${encodeURIComponent(miningKeyword.trim())}` }],
               proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ["RESIDENTIAL"] },
-              maxItems: 600
+              maxItems: 150
           };
       } else if (!safeActorId.includes('dz_omar')) {
           payload = {
               startUrls: [{ url: `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=BR&q=${encodeURIComponent(miningKeyword.trim())}` }],
-              resultsLimit: 600
+              resultsLimit: 150
           };
       }
 
       setMiningProgress(20);
       setMiningStatusMsg('A iniciar missão de espionagem no Meta...');
-      addLog(`Robô detetado: enviando pesquisa (Max: 600)...`);
+      addLog(`Robô detetado: enviando pesquisa (Max: 150 rápidos)...`);
       
       const runResponse = await fetch(`https://api.apify.com/v2/acts/${safeActorId}/runs?token=${token}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
@@ -278,12 +279,15 @@ export default function App() {
       const runId = runData.data.id;
       
       setMiningProgress(30);
-      setMiningStatusMsg(`A extrair milhares de anúncios da Biblioteca...`);
+      setMiningStatusMsg(`A extrair anúncios da Biblioteca...`);
       addLog(`Tarefa Apify criada (ID: ${runId}). A aguardar...`);
 
       let finished = false;
-      while (!finished) {
+      let timeoutCounter = 0; // Prevenção contra loops infinitos (Max 120 segundos)
+
+      while (!finished && timeoutCounter < 30) {
         await new Promise(r => setTimeout(r, 4000));
+        timeoutCounter++;
         
         // Simular progresso enquanto espera
         setMiningProgress(prev => Math.min(prev + Math.floor(Math.random() * 8) + 2, 85));
@@ -294,15 +298,15 @@ export default function App() {
         const statusData = await statusRes.json();
         if (statusData.data.status === 'SUCCEEDED') { 
             finished = true; 
-            addLog('Extração concluída!'); 
+            addLog('Extração concluída no servidor!'); 
         } else if (['FAILED', 'ABORTED'].includes(statusData.data.status)) {
-            throw new Error(`ESTADO FAILED: ${statusData.data.statusMessage || 'Erro desconhecido na Apify.'}`);
+            throw new Error(`O Robô falhou no servidor: ${statusData.data.statusMessage || 'Erro desconhecido na Apify.'}`);
         }
       }
 
       setMiningProgress(90);
-      setMiningStatusMsg('Extração concluída! A transferir os dados massivos...');
-      addLog('A transferir dados...');
+      setMiningStatusMsg('Extração concluída! A transferir os dados...');
+      addLog('A transferir ficheiro JSON de dados...');
       
       const datasetRes = await fetch(`https://api.apify.com/v2/datasets/${runData.data.defaultDatasetId}/items?token=${token}`);
       const rawAds = await datasetRes.json();
@@ -329,20 +333,20 @@ export default function App() {
       if (adsToProcess.length === 0) adsToProcess = validAds; 
 
       setMiningProgress(95);
-      setMiningStatusMsg('A aplicar inteligência artificial e deduplicação...');
-      addLog(`A processar e agrupar ${adsToProcess.length} anúncios...`, 'success');
+      setMiningStatusMsg('A aplicar Agrupamento de Funil de Vendas...');
+      addLog(`A processar e agrupar funis de ${adsToProcess.length} anúncios...`, 'success');
 
-      // Função melhorada para limpar URLs removendo tracking tokens e hashtags para matching perfeito
-      const cleanUrl = (url) => {
-          if (!url) return 'no-media';
+      // Função para extrair o domínio base para agrupamento de funil (Ignora parâmetros e caminhos aleatórios)
+      const getBaseDomain = (url) => {
+          if (!url || url.includes('facebook.com') || url.includes('fb.me') || url.includes('instagram.com')) return 'no-link';
           try { 
-              // Pega apenas o caminho base da imagem/video, ignorando ?_nc_cat e outros lixos
-              return url.split('?')[0].split(/[#&]/)[0]; 
-          } catch(e) { return 'no-media'; }
+              const urlObj = new URL(url);
+              return urlObj.hostname.replace('www.', ''); 
+          } catch(e) { return 'no-link'; }
       };
 
-      // MAPA DE AGRUPAMENTO DE ELITE (Idêntico ao do Meta Ads Library)
-      const adsMap = new Map();
+      // MAPA DE AGRUPAMENTO DE FUNIL (Agrupa pelo Anunciante + Produto/Link)
+      const funnelMap = new Map();
 
       adsToProcess.forEach((rawData, index) => {
         try {
@@ -421,41 +425,43 @@ export default function App() {
             let likesCount = rootItem.page_likes || coreItem.page_likes || Math.floor(Math.random() * 800) + 100;
             if (isNaN(likesCount)) likesCount = Math.floor(Math.random() * 800) + 100;
 
-            // ASSINATURA EXATA (Igual à da Meta: Copy Exata + Criativo Visual Exato)
-            // Isto garante que a contagem reflete exatamente a visão de blocos da Biblioteca
-            const copyTrimmed = copyText.substring(0, 50).replace(/\s+/g, ' ').trim();
-            const mediaId = cleanUrl(mediaUrl || videoUrl);
-            const signature = `${advertiser}_${copyTrimmed}_${mediaId}`;
+            // ASSINATURA DE FUNIL: Agrupa todos os testes (A/B testing) do mesmo Anunciante para o mesmo Site
+            const baseDomain = getBaseDomain(targetUrl);
+            const copyTrimmedForFallback = copyText.substring(0, 30).replace(/\s+/g, ' ').trim();
+            const signature = baseDomain !== 'no-link' ? `${advertiser}_${baseDomain}` : `${advertiser}_${copyTrimmedForFallback}`;
 
-            if (adsMap.has(signature)) {
-                const existingAd = adsMap.get(signature);
+            if (funnelMap.has(signature)) {
+                // SOMA DOS ANÚNCIOS DO FUNIL (Qualquer vídeo ou copy diferente para o mesmo produto soma aqui!)
+                const existingAd = funnelMap.get(signature);
                 
                 if (!existingAd.archiveIds) existingAd.archiveIds = {};
                 
-                // Mapeia por ID da Meta, evitando duplicação causada pela API
+                // Evita somar o mesmo ID exato do Meta duas vezes, mas soma todos os diferentes
                 if (!existingAd.archiveIds[adId] || countForThisArchive > existingAd.archiveIds[adId]) {
                     existingAd.archiveIds[adId] = countForThisArchive;
                 }
                 
-                // Recalcula o total exato somando as métricas originais do Meta
                 existingAd.adCount = Object.values(existingAd.archiveIds).reduce((a, b) => a + b, 0);
 
+                // O tempo máximo que este funil está no ar
                 if (daysActive > existingAd.daysActive) {
                     existingAd.daysActive = daysActive;
                 }
                 
+                // A prioridade visual é mostrar sempre o Vídeo ou a Imagem mais antiga (a vencedora)
                 if (isVideo && !existingAd.isVideo) {
                     existingAd.videoUrl = videoUrl;
                     existingAd.mediaUrl = mediaUrl;
                     existingAd.type = "Vídeo";
                     existingAd.formatType = formatType;
                     existingAd.isVideo = true;
+                    existingAd.copy = copyText; // Atualiza a copy para corresponder ao vídeo vencedor
                 }
             } else {
                 const initialArchiveIds = {};
                 initialArchiveIds[adId] = countForThisArchive;
 
-                adsMap.set(signature, {
+                funnelMap.set(signature, {
                   id: adId,
                   title: title,
                   advertiser: advertiser,
@@ -491,7 +497,8 @@ export default function App() {
         }
       });
 
-      const formattedAds = Array.from(adsMap.values()).map(ad => {
+      const formattedAds = Array.from(funnelMap.values()).map(ad => {
+          // Status Escalando Real: Baseado no total de dinheiro/anúncios investidos no Funil
           if (ad.adCount >= 4 || (ad.daysActive >= 10 && ad.adCount >= 2)) ad.status = "Escalando";
           else if (ad.daysActive >= 3 || ad.adCount > 1) ad.status = "Validado";
           return ad;
