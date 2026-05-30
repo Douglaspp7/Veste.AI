@@ -178,7 +178,6 @@ export default function App() {
         throw new Error(`A Apify falhou ao ler a página: ${errDesc || "Erro bloqueado pelo Facebook"}`);
       }
 
-      // CORREÇÃO: Limpamos os logs da Apify sem causar erro de "item is not defined"
       const validAds = rawAds.filter(rawAd => {
           if (rawAd.error) return false;
           if (rawAd.type === 'summary' || rawAd.type === 'query_complete' || rawAd.type === 'complete' || rawAd.type === 'log') return false;
@@ -289,7 +288,8 @@ export default function App() {
           copy: copyText,
           niche: "Geral",
           platform: Array.isArray(rootItem.platforms) ? rootItem.platforms.join(', ') : Array.isArray(coreItem.publisherPlatforms) ? coreItem.publisherPlatforms.join(', ') : coreItem.platforms ? coreItem.platforms.join(', ') : "Facebook",
-          likesCount: rootItem.page_likes || item.likeCount || item.page_likes || Math.floor(Math.random() * 800) + 100,
+          // CORREÇÃO: Removido a variável fantasma "item" e substituída por coreItem
+          likesCount: rootItem.page_likes || coreItem.likeCount || coreItem.page_likes || Math.floor(Math.random() * 800) + 100,
           status: "Validado",
           type: isVideo ? "Vídeo" : "Imagem",
           mediaUrl: mediaUrl,
