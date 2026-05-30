@@ -59,25 +59,38 @@ export default function App() {
     const savedToken = localStorage.getItem('adsniper_apify_token');
     const savedActor = localStorage.getItem('adsniper_apify_actor');
     const savedGeminiToken = localStorage.getItem('adsniper_gemini_token');
+    
     if (savedToken) setApifyToken(savedToken);
     if (savedActor) setActorId(savedActor);
-    if (savedGeminiToken) setGeminiToken(savedGeminiToken);
+    // Limpa a chave se ela for, por engano, um pedaço de código
+    if (savedGeminiToken && !savedGeminiToken.startsWith('//')) {
+        setGeminiToken(savedGeminiToken);
+    }
   }, []);
 
   const handleSaveSettings = () => {
     localStorage.setItem('adsniper_apify_token', apifyToken.trim());
     localStorage.setItem('adsniper_apify_actor', actorId.trim());
-    localStorage.setItem('adsniper_gemini_token', geminiToken.trim());
+    
+    // Garante que não guardamos lixo
+    const cleanGeminiToken = geminiToken.trim();
+    if (cleanGeminiToken.startsWith('AIzaSy')) {
+         localStorage.setItem('adsniper_gemini_token', cleanGeminiToken);
+    } else if (cleanGeminiToken === '') {
+         localStorage.removeItem('adsniper_gemini_token');
+    }
+
     setShowSettings(false);
     addLog('Configurações guardadas com sucesso.', 'success');
   };
 
-  // Integração IA Otimizada para Vercel e Chaves Públicas
   const callGeminiWithRetry = async (prompt, token, retries = 5) => {
-    const apiKey = token || ""; 
-    
-    // CORREÇÃO: Se for a chave pública do utilizador (Vercel), usa o modelo 1.5 Flash. 
-    // Se for no ambiente de testes Canvas (sem chave fornecida), usa o 2.5 Preview.
+    // Validação extra: Se o token for código ou lixo, força a usar sem token (para o Canvas)
+    let apiKey = token || "";
+    if (apiKey && !apiKey.startsWith('AIzaSy')) {
+        apiKey = ""; 
+    }
+
     const model = apiKey ? "gemini-1.5-flash" : "gemini-2.5-flash-preview-09-2025";
     const endpointUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     
@@ -98,9 +111,8 @@ export default function App() {
             }
             return await response.json();
         } catch (err) {
-            // Tratamento específico para o erro de bloqueio (Failed to fetch)
             if (err.message.includes('Failed to fetch')) {
-                throw new Error("Failed to fetch: O seu navegador ou AdBlocker bloqueou a comunicação com a API do Google. Por favor, desative o bloqueador de anúncios para este site e tente novamente.");
+                throw new Error("O seu navegador ou AdBlocker bloqueou a comunicação com a API do Google. Por favor, desative o bloqueador de anúncios para este site e tente novamente.");
             }
             
             if (attempt === retries) throw new Error(`Falha na API da IA: ${err.message}`);
@@ -111,9 +123,12 @@ export default function App() {
   };
 
   const analyzeAdWithAI = async (ad) => {
-    // Alerta caso a chave não esteja configurada no Vercel
-    if (!geminiToken && window.location.hostname !== 'localhost' && !window.location.hostname.includes('google')) {
-       alert("Configure a sua Chave API do Gemini nas Configurações para gerar as análises!");
+    // Validação segura para garantir que o token começa corretamente
+    const cleanToken = geminiToken.trim();
+    const isVercel = window.location.hostname !== 'localhost' && !window.location.hostname.includes('google');
+    
+    if (isVercel && (!cleanToken || !cleanToken.startsWith('AIzaSy'))) {
+       alert("Por favor, verifique a sua Chave API do Gemini nas Configurações. Ela deve começar com 'AIzaSy'.");
        return;
     }
 
@@ -132,7 +147,7 @@ Forneça um relatório direto contendo:
 3. COPY OTIMIZADA: Reescreva o texto focando em alta conversão (utilize frameworks como AIDA ou PAS) com emojis estratégicos e um Call To Action irresistível.`;
 
     try {
-        const data = await callGeminiWithRetry(prompt, geminiToken.trim());
+        const data = await callGeminiWithRetry(prompt, cleanToken);
         const feedback = data.candidates?.[0]?.content?.parts?.[0]?.text || "Erro ao gerar análise. Resposta vazia da IA.";
         setAiFeedback(feedback);
     } catch (err) {
