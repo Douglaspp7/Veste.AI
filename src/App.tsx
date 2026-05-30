@@ -72,7 +72,7 @@ export default function App() {
     localStorage.setItem('adsniper_apify_token', apifyToken.trim());
     localStorage.setItem('adsniper_apify_actor', actorId.trim());
     
-    // CORREÇÃO: Aceita qualquer formato de chave da Google (incluindo as novas "AQ...")
+    // Aceita qualquer formato de chave da Google (incluindo as novas "AQ...")
     const cleanGeminiToken = geminiToken.trim();
     if (cleanGeminiToken !== '') {
          localStorage.setItem('adsniper_gemini_token', cleanGeminiToken);
@@ -87,6 +87,8 @@ export default function App() {
   const callGeminiWithRetry = async (prompt, token, retries = 5) => {
     let apiKey = token || "";
 
+    // Garantir que a URL e o modelo estão corretos e consistentes com a versão da API
+    // Utilizamos o gemini-1.5-flash como padrão se houver uma chave definida pelo usuário
     const model = apiKey ? "gemini-1.5-flash" : "gemini-2.5-flash-preview-09-2025";
     const endpointUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     
@@ -122,7 +124,7 @@ export default function App() {
     const cleanToken = geminiToken.trim();
     const isVercel = window.location.hostname !== 'localhost' && !window.location.hostname.includes('google');
     
-    // CORREÇÃO: Apenas verifica se a chave não está vazia.
+    // Apenas verifica se a chave não está vazia.
     if (isVercel && !cleanToken) {
        alert("Por favor, adicione a sua Chave API do Gemini nas Configurações para gerar as análises.");
        return;
