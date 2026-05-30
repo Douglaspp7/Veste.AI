@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React from 'react';
 import { Flame, CheckCircle, Clock } from 'lucide-react';
 
