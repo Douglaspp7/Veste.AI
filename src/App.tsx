@@ -44,6 +44,7 @@ export default function App() {
   // APIs
   const [apifyToken, setApifyToken] = useState('');
   const [actorId, setActorId] = useState('dz_omar/facebook-ads-scraper-pro'); 
+  const [geminiToken, setGeminiToken] = useState('');
 
   // Modal e IA
   const [selectedAd, setSelectedAd] = useState(null);
@@ -57,20 +58,23 @@ export default function App() {
   useEffect(() => {
     const savedToken = localStorage.getItem('adsniper_apify_token');
     const savedActor = localStorage.getItem('adsniper_apify_actor');
+    const savedGeminiToken = localStorage.getItem('adsniper_gemini_token');
     if (savedToken) setApifyToken(savedToken);
     if (savedActor) setActorId(savedActor);
+    if (savedGeminiToken) setGeminiToken(savedGeminiToken);
   }, []);
 
   const handleSaveSettings = () => {
     localStorage.setItem('adsniper_apify_token', apifyToken.trim());
     localStorage.setItem('adsniper_apify_actor', actorId.trim());
+    localStorage.setItem('adsniper_gemini_token', geminiToken.trim());
     setShowSettings(false);
     addLog('Configurações guardadas com sucesso.', 'success');
   };
 
-  // Nova Integração IA Automática (Sem necessitar de chave do utilizador)
-  const callGeminiWithRetry = async (prompt, retries = 5) => {
-    const apiKey = ""; // Chave fornecida magicamente pelo ambiente de execução
+  // Integração IA com Chave do Utilizador (Para funcionar no Vercel)
+  const callGeminiWithRetry = async (prompt, token, retries = 5) => {
+    const apiKey = token || ""; // Usa a chave fornecida pelo utilizador ou a chave do ambiente de testes
     const delays = [1000, 2000, 4000, 8000, 16000];
     let attempt = 0;
     while (attempt <= retries) {
@@ -80,10 +84,13 @@ export default function App() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
             });
-            if (!response.ok) throw new Error("Erro na API da Gemini");
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.error?.message || "Erro na API da Gemini");
+            }
             return await response.json();
         } catch (err) {
-            if (attempt === retries) throw new Error("Falha na API da IA após várias tentativas. Tente novamente mais tarde.");
+            if (attempt === retries) throw new Error(`Falha na API da IA: ${err.message}`);
             await new Promise(r => setTimeout(r, delays[attempt]));
             attempt++;
         }
@@ -91,6 +98,12 @@ export default function App() {
   };
 
   const analyzeAdWithAI = async (ad) => {
+    // Alerta caso a chave não esteja configurada (fundamental para o Vercel)
+    if (!geminiToken && window.location.hostname !== 'localhost' && !window.location.hostname.includes('google')) {
+       alert("Configure a sua Chave API do Gemini nas Configurações para gerar as análises!");
+       return;
+    }
+
     setIsAnalyzing(true);
     setAiFeedback("");
     
@@ -106,11 +119,11 @@ Forneça um relatório direto contendo:
 3. COPY OTIMIZADA: Reescreva o texto focando em alta conversão (utilize frameworks como AIDA ou PAS) com emojis estratégicos e um Call To Action irresistível.`;
 
     try {
-        const data = await callGeminiWithRetry(prompt);
+        const data = await callGeminiWithRetry(prompt, geminiToken.trim());
         const feedback = data.candidates?.[0]?.content?.parts?.[0]?.text || "Erro ao gerar análise. Resposta vazia da IA.";
         setAiFeedback(feedback);
     } catch (err) {
-        setAiFeedback("Erro: " + err.message);
+        setAiFeedback("Erro ao analisar: " + err.message);
     } finally {
         setIsAnalyzing(false);
     }
@@ -621,9 +634,17 @@ Forneça um relatório direto contendo:
                     />
                   </div>
 
-                  <div className="bg-slate-950 p-5 rounded-xl border border-slate-800 opacity-60">
-                    <h3 className="text-lg font-bold text-slate-200 mb-2 flex items-center gap-2"><Sparkles className="w-5 h-5 text-indigo-500"/> Análise IA (Google Gemini)</h3>
-                    <p className="text-xs text-slate-400">A Inteligência Artificial Gemini 2.5 Pro já está integrada e ativa magicamente no servidor deste sistema. Nenhuma configuração extra é necessária para ter as suas Copys otimizadas!</p>
+                  <div className="bg-slate-950 p-5 rounded-xl border border-slate-800">
+                    <h3 className="text-lg font-bold text-slate-200 mb-4 flex items-center gap-2"><Sparkles className="w-5 h-5 text-indigo-500"/> Análise IA (Google Gemini)</h3>
+                    <label className="block text-sm font-bold text-slate-400 mb-2">Chave de API do Gemini</label>
+                    <input 
+                      type="password" 
+                      value={geminiToken} 
+                      onChange={e => setGeminiToken(e.target.value)} 
+                      placeholder="AIzaSy..." 
+                      className="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-white outline-none focus:border-indigo-500 transition-colors mb-2" 
+                    />
+                    <p className="text-xs text-slate-500">Obtenha a sua chave gratuita no <a href="https://aistudio.google.com/" target="_blank" rel="noreferrer" className="text-indigo-400 hover:underline">Google AI Studio</a>. É necessária para gerar o relatório do consultor no seu site público.</p>
                   </div>
 
                   <button onClick={handleSaveSettings} className="bg-green-600 w-full hover:bg-green-500 px-8 py-4 rounded-xl text-white font-bold transition-colors mt-4">
