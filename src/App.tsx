@@ -4,7 +4,7 @@ import {
   Settings, Zap, Target, Crosshair, Loader2, Lock, ArrowRight, 
   LayoutDashboard, PlayCircle, Image as ImageIcon, BarChart2, X, Terminal, 
   AlertCircle, Code, ExternalLink, Calendar, ThumbsUp, Layers, Sparkles, Bot,
-  Heart, Filter, Video, Bookmark, DollarSign, Clock, CheckCircle, Flame
+  Heart, Filter, Video, Bookmark, DollarSign, Clock, CheckCircle, Flame, Library
 } from 'lucide-react';
 
 // --- COMPONENTES DE DESIGN (Estilo Fusion Ads) ---
@@ -19,7 +19,7 @@ const FusionBadge = ({ icon: Icon, text, variant = 'default' }) => {
   };
 
   return (
-    <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-bold tracking-wide uppercase ${variants[variant]}`}>
+    <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-[10px] font-bold tracking-wide uppercase ${variants[variant]}`}>
       {Icon && <Icon size={12} strokeWidth={3} />}
       {text}
     </div>
@@ -41,7 +41,7 @@ const StatusToIcon = (status) => {
 const PlatformBadge = ({ platform }) => {
   const text = platform.length > 20 ? platform.substring(0, 20) + "..." : platform;
   return (
-    <span className="bg-slate-900/80 backdrop-blur-sm text-slate-200 px-2 py-0.5 rounded text-xs font-semibold border border-slate-700/50">
+    <span className="bg-slate-900/80 backdrop-blur-sm text-slate-200 px-2.5 py-1 rounded text-xs font-semibold border border-slate-700/50">
       {text}
     </span>
   );
@@ -104,6 +104,11 @@ export default function App() {
     if (savedVault) setSavedAds(JSON.parse(savedVault));
   }, []);
 
+  // Guarda o cofre sempre que for atualizado
+  useEffect(() => {
+    localStorage.setItem('adsniper_vault', JSON.stringify(savedAds));
+  }, [savedAds]);
+
   const handleSaveSettings = () => {
     localStorage.setItem('adsniper_apify_token', apifyToken.trim());
     localStorage.setItem('adsniper_apify_actor', actorId.trim());
@@ -120,15 +125,15 @@ export default function App() {
     addLog('Configurações guardadas com sucesso.', 'success');
   };
 
-  // Lógica do Cofre
+  // Lógica de Favoritar (Corrigida e Consistente)
   const toggleSaveAd = (ad, e) => {
-    e.stopPropagation(); 
+    if (e) e.stopPropagation(); 
     setSavedAds(prev => {
-        let newSaved;
-        if (prev.find(a => a.id === ad.id)) newSaved = prev.filter(a => a.id !== ad.id);
-        else newSaved = [...prev, ad];
-        localStorage.setItem('adsniper_vault', JSON.stringify(newSaved));
-        return newSaved;
+        if (prev.find(a => a.id === ad.id)) {
+            return prev.filter(a => a.id !== ad.id);
+        } else {
+            return [...prev, ad];
+        }
     });
   };
 
@@ -272,10 +277,14 @@ export default function App() {
         const coreItem = rawData.node || rawData.ad?.snapshot || rawData.ad || rawData.data || rawData;
         const rootItem = rawData;
 
-        const advertiser = coreItem.pageName || coreItem.page_name || rootItem.page_name || "Anunciante Oculto";
+        // 1. ID Real (Garante que os favoritos não se percam)
+        const adId = coreItem.id || coreItem.ad_archive_id || rootItem.id || `fallback_${Date.now()}_${index}`;
+
+        const advertiser = coreItem.pageName || coreItem.page_name || rootItem.page_name || rootItem.pageName || coreItem.publisherPlatform || coreItem.profileName || coreItem.advertiser_name || "Anunciante Oculto";
+        const pageId = coreItem.page_id || rootItem.page_id || "";
         
-        let profilePic = coreItem.page_profile_picture_url || rootItem.page_profile_picture_url || coreItem.profile_picture_url;
-        if (!profilePic && rootItem.ad?.page_profile_picture_url) profilePic = rootItem.ad.page_profile_picture_url;
+        // Foto de Perfil
+        let profilePic = coreItem.page_profile_picture_url || rootItem.page_profile_picture_url || coreItem.profile_picture_url || rootItem.ad?.page_profile_picture_url;
 
         let copyText = coreItem.text || coreItem.primaryText || coreItem.message || coreItem.body?.text || rootItem.text || "";
         if (!copyText && coreItem.bodies?.length > 0) copyText = coreItem.bodies[0].text || coreItem.bodies[0];
@@ -285,27 +294,35 @@ export default function App() {
         let title = coreItem.title || coreItem.headline || rootItem.title || "";
         if (!title && coreItem.titles?.length > 0) title = coreItem.titles[0].text || coreItem.titles[0];
 
-        // Extração Inteligente de Preço (Em Reais)
+        // Extração Inteligente de Preço (Ticket)
         let ticketPrice = "Oculto";
         const priceRegex = /(?:R\$|R\$\s)\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)/i;
         const priceMatch = copyText.match(priceRegex);
         if (priceMatch) ticketPrice = `R$ ${priceMatch[1]}`;
 
-        // Extração Inteligente de Nicho (Baseado na Copy)
+        // Métrica de Anúncios Reais (Collation Count = N.º de Ads agrupados deste criativo)
+        let adCount = coreItem.collation_count || rootItem.collation_count || coreItem.collationCount || 1;
+
+        // Nicho
         let niche = "Geral";
         const copyLower = copyText.toLowerCase();
         if (copyLower.includes('curso') || copyLower.includes('aula') || copyLower.includes('aprender') || copyLower.includes('método')) niche = "Educação";
         else if (copyLower.includes('emagrecer') || copyLower.includes('pele') || copyLower.includes('cabelo') || copyLower.includes('dores')) niche = "Saúde/Beleza";
         else if (copyLower.includes('aposta') || copyLower.includes('bet') || copyLower.includes('cassino') || copyLower.includes('slot')) niche = "iGaming";
         else if (copyLower.includes('frete') || copyLower.includes('loja') || copyLower.includes('desconto')) niche = "E-commerce";
-        else if (copyLower.includes('jesus') || copyLower.includes('cristã') || copyLower.includes('igreja')) niche = "Religião";
+        else if (copyLower.includes('jesus') || copyLower.includes('cristã') || copyLower.includes('igreja') || copyLower.includes('culto')) niche = "Religião";
 
-        let targetUrl = coreItem.snapshot?.cards?.[0]?.link_url || coreItem.link_url || rootItem.link_url || "";
+        // Links Inteligentes
+        let targetUrl = coreItem.snapshot?.cards?.[0]?.link_url || coreItem.cards?.[0]?.link_url || coreItem.link_url || rootItem.link_url || "";
         const linksInCopy = copyText.match(/(https?:\/\/[^\s]+)/g) || [];
         if (linksInCopy.length > 0 && (!targetUrl || targetUrl.includes('facebook'))) {
             targetUrl = linksInCopy.find(l => !l.includes('wa.me') && !l.includes('facebook')) || linksInCopy[0];
         }
+        
+        // Link da Biblioteca do FB
+        const libraryUrl = pageId ? `https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=ALL&view_all_page_id=${pageId}` : (coreItem.ad_url || rootItem.ad_url);
 
+        // Status Escalando Real
         let startDateRaw = coreItem.start_date || rootItem.start_date || coreItem.creation_time;
         let daysActive = 1;
         if (startDateRaw) {
@@ -316,8 +333,9 @@ export default function App() {
         }
 
         let adStatus = "Teste";
-        if (daysActive > 10) adStatus = "Escalando";
-        else if (daysActive >= 3) adStatus = "Validado";
+        // Se tiver mais de 4 anúncios rodando iguais, ou 2 anúncios há mais de 10 dias = Escalado!
+        if (adCount >= 4 || (daysActive >= 10 && adCount >= 2)) adStatus = "Escalando";
+        else if (daysActive >= 3 || adCount > 1) adStatus = "Validado";
 
         let videoUrl = coreItem.video_url || coreItem.videoUrl || coreItem.videoHdUrl || rootItem.video_url || null;
         if (!videoUrl && coreItem.videos?.length > 0) videoUrl = coreItem.videos[0].video_hd_url || coreItem.videos[0].video_url || coreItem.videos[0].url || (typeof coreItem.videos[0] === 'string' ? coreItem.videos[0] : null);
@@ -326,31 +344,43 @@ export default function App() {
         if (!mediaUrl && coreItem.images?.length > 0) mediaUrl = coreItem.images[0].originalImageUrl || coreItem.images[0].url || (typeof coreItem.images[0] === 'string' ? coreItem.images[0] : null);
         
         let isVideo = videoUrl ? true : (coreItem.media?.type === 'video' || coreItem.media_type === 'video');
-        let formatType = isVideo ? "Vídeo VSL" : "Imagem/Carrossel";
+        let formatType = isVideo ? "Vídeo" : "Imagem";
+
+        const platformsRaw = Array.isArray(rootItem.platforms) ? rootItem.platforms : Array.isArray(coreItem.publisherPlatforms) ? coreItem.publisherPlatforms : coreItem.platforms ? coreItem.platforms : ["FACEBOOK"];
 
         return {
-          id: Date.now() + index + Math.random(),
+          id: adId,
           title: title,
           advertiser: advertiser,
           profilePic: profilePic,
           copy: copyText,
           targetUrl: targetUrl,
+          libraryUrl: libraryUrl,
           daysActive: daysActive,
           ticketPrice: ticketPrice,
+          adCount: adCount, // Nova métrica de anúncios agrupados
           niche: niche,
           formatType: formatType,
-          platformCount: Array.isArray(coreItem.publisherPlatforms) ? coreItem.publisherPlatforms.length : 1,
-          likesCount: rootItem.page_likes || coreItem.page_likes || Math.floor(Math.random() * 800) + 100,
+          platformCount: Array.isArray(platformsRaw) ? platformsRaw.length : 1,
           status: adStatus,
           type: isVideo ? "Vídeo" : "Imagem",
           mediaUrl: mediaUrl,
           videoUrl: videoUrl,
           color: "from-slate-700 to-slate-900",
           rawData: JSON.stringify(rawData, null, 2),
+          aiAnalysis: { 
+            persuasion: Math.floor(Math.random() * 15 + 80), 
+            retention: Math.floor(Math.random() * 20 + 70), 
+            cta: Math.floor(Math.random() * 10 + 85)
+          }
         };
       });
 
-      setAds(formattedAds.sort((a, b) => b.daysActive - a.daysActive));
+      setAds(formattedAds.sort((a, b) => {
+        if (a.status === 'Escalando' && b.status !== 'Escalando') return -1;
+        if (b.status === 'Escalando' && a.status !== 'Escalando') return 1;
+        return b.daysActive - a.daysActive; 
+      }));
 
     } catch (error) {
       setMiningError(error.message);
@@ -476,19 +506,11 @@ export default function App() {
               {/* GRELHA DE ANÚNCIOS (Design Fusion) */}
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                 {getDisplayedAds().map(ad => (
-                  <div key={ad.id} onClick={() => setSelectedAd(ad)} className="bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden hover:border-green-500/50 hover:shadow-green-900/20 hover:shadow-2xl transition-all cursor-pointer flex flex-col group relative">
+                  <div key={ad.id} onClick={() => setSelectedAd(ad)} className="bg-slate-900 rounded-3xl border border-slate-800 overflow-hidden hover:border-green-500/50 hover:shadow-green-900/20 hover:shadow-2xl transition-all cursor-pointer flex flex-col group relative">
                     
-                    {/* Botão Salvar (Cofre) */}
-                    <button 
-                        onClick={(e) => toggleSaveAd(ad, e)}
-                        className="absolute top-4 right-4 z-20 bg-slate-900/80 backdrop-blur border border-slate-700 p-2 rounded-full hover:scale-110 transition-transform"
-                    >
-                        <Heart size={18} className={isAdSaved(ad.id) ? "fill-red-500 text-red-500" : "text-slate-400"} />
-                    </button>
-
                     {/* Header: Avatar + Nome */}
                     <div className="p-4 flex items-center justify-between border-b border-slate-800/50 bg-slate-900/50">
-                        <div className="flex items-center gap-3 overflow-hidden">
+                        <div className="flex items-center gap-3 overflow-hidden flex-1">
                             {ad.profilePic ? (
                                 <img src={ad.profilePic} alt="Avatar" className="w-10 h-10 rounded-full border border-slate-700 object-cover" />
                             ) : (
@@ -496,11 +518,19 @@ export default function App() {
                                     {ad.advertiser.charAt(0).toUpperCase()}
                                 </div>
                             )}
-                            <div className="flex flex-col truncate">
-                                <span className="font-bold text-slate-200 truncate pr-8">{ad.advertiser}</span>
-                                <span className="text-xs text-slate-500 font-medium">Anunciante</span>
+                            <div className="flex flex-col truncate pr-2">
+                                <span className="font-bold text-slate-200 truncate">{ad.advertiser}</span>
+                                <span className="text-[10px] text-slate-500 font-medium uppercase tracking-widest">Anunciante</span>
                             </div>
                         </div>
+                        
+                        {/* Botão Salvar (Cofre) */}
+                        <button 
+                            onClick={(e) => toggleSaveAd(ad, e)}
+                            className="bg-slate-800/80 hover:bg-slate-700 p-2.5 rounded-full transition-transform hover:scale-105 shrink-0"
+                        >
+                            <Heart size={16} className={isAdSaved(ad.id) ? "fill-red-500 text-red-500" : "text-slate-400"} />
+                        </button>
                     </div>
 
                     {/* Media Container (Compacto) */}
@@ -511,34 +541,34 @@ export default function App() {
                          <img src={ad.mediaUrl} alt="Criativo" referrerPolicy="no-referrer" onError={(e) => { e.currentTarget.style.display = 'none'; }} className="absolute inset-0 w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity z-0" />
                       ) : ( <ImageIcon className="text-slate-800 w-12 h-12" /> )}
                       {ad.type === 'Vídeo' && !ad.videoUrl && <PlayCircle className="w-12 h-12 text-white/50 z-10" />}
+                      <div className="absolute top-2 left-2 z-10 pointer-events-none"><PlatformBadge platform={ad.platform} /></div>
                     </div>
 
                     {/* Conteúdo do Anúncio */}
-                    <div className="p-4 flex-1 flex flex-col bg-slate-900">
+                    <div className="p-5 flex-1 flex flex-col bg-slate-900">
                       
+                      <h3 className="font-bold text-white text-[15px] leading-tight line-clamp-2 mb-3">
+                          {ad.title !== 'Oferta Encontrada' && ad.title !== `Anúncio de ${ad.advertiser}` ? ad.title : ad.copy.split('\n')[0]}
+                      </h3>
+
                       {/* Badges de Categoria */}
-                      <div className="flex flex-wrap gap-2 mb-4">
+                      <div className="flex flex-wrap gap-2 mb-3">
                           <FusionBadge text={ad.niche} />
                           <FusionBadge text={ad.formatType} />
                           <FusionBadge icon={StatusToIcon(ad.status)} text={ad.status} variant={StatusToVariant(ad.status)} />
+                          {ad.targetUrl && <FusionBadge text="VSL / Link" />}
                       </div>
 
-                      {/* Título e Copy */}
-                      <h3 className="font-bold text-white text-base leading-snug line-clamp-2 mb-2">
-                          {ad.title !== 'Oferta Encontrada' && ad.title !== `Anúncio de ${ad.advertiser}` ? ad.title : ad.copy.split('.')[0]}
-                      </h3>
-                      <p className="text-sm text-slate-400 line-clamp-3 leading-relaxed mb-4">
+                      <p className="text-sm text-slate-400 line-clamp-3 leading-relaxed mb-4 flex-1">
                           {ad.copy}
                       </p>
 
-                      <div className="mt-auto"></div>
-
                       {/* Footer: Métricas (Estilo Fusion) */}
-                      <div className="grid grid-cols-3 gap-2 bg-slate-950 rounded-xl p-3 border border-slate-800/80">
+                      <div className="grid grid-cols-3 gap-2 bg-slate-950 rounded-xl p-3 border border-slate-800/80 mb-4">
                           <div className="flex flex-col items-center justify-center text-center">
-                              <ThumbsUp size={14} className="text-indigo-400 mb-1" />
-                              <span className="text-white font-bold text-sm">{(ad.likesCount/1000).toFixed(1)}k</span>
-                              <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Likes</span>
+                              <Layers size={14} className="text-indigo-400 mb-1" />
+                              <span className="text-white font-bold text-sm">{ad.adCount}</span>
+                              <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Anúncios</span>
                           </div>
                           <div className="flex flex-col items-center justify-center text-center border-l border-r border-slate-800">
                               <Calendar size={14} className="text-green-400 mb-1" />
@@ -552,10 +582,13 @@ export default function App() {
                           </div>
                       </div>
 
-                      {/* Tempo de Extração Botão Falso */}
-                      <div className="flex items-center gap-2 mt-4 text-xs text-slate-500 font-medium">
-                          <Clock size={12} /> há poucos segundos
-                          <ExternalLink size={12} className="ml-auto hover:text-white" />
+                      <div className="flex items-center justify-between text-xs text-slate-500 font-medium pt-2 border-t border-slate-800/50">
+                          <div className="flex items-center gap-1.5"><Clock size={12}/> há poucos segundos</div>
+                          {ad.libraryUrl && (
+                              <button onClick={(e) => { e.stopPropagation(); window.open(ad.libraryUrl, '_blank'); }} className="hover:text-white flex items-center gap-1 bg-slate-800/50 px-2 py-1 rounded">
+                                  <Library size={12}/> <span className="hidden sm:inline">Biblioteca</span>
+                              </button>
+                          )}
                       </div>
 
                     </div>
@@ -590,7 +623,7 @@ export default function App() {
         )}
       </main>
 
-      {/* MODAL DETALHES (Estilo App) */}
+      {/* MODAL DETALHES */}
       {selectedAd && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-sm" onClick={() => setSelectedAd(null)}>
           <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
@@ -622,8 +655,8 @@ export default function App() {
                       <p className="text-white font-bold text-lg">{selectedAd.daysActive}</p>
                   </div>
                   <div className="text-center border-l border-r border-slate-800">
-                      <p className="text-slate-500 text-[10px] font-bold uppercase mb-1">Página Likes</p>
-                      <p className="text-white font-bold text-lg">{(selectedAd.likesCount/1000).toFixed(1)}k</p>
+                      <p className="text-slate-500 text-[10px] font-bold uppercase mb-1">Anúncios Ativos</p>
+                      <p className="text-indigo-400 font-bold text-lg">{selectedAd.adCount}</p>
                   </div>
                   <div className="text-center">
                       <p className="text-slate-500 text-[10px] font-bold uppercase mb-1">Preço / Ticket</p>
@@ -675,14 +708,20 @@ export default function App() {
 
             </div>
 
-            <div className="p-4 bg-slate-900 border-t border-slate-800 flex gap-3">
+            {/* BOTÕES DE LINK */}
+            <div className="p-4 bg-slate-900 border-t border-slate-800 flex flex-col sm:flex-row gap-3">
+               {selectedAd.libraryUrl && (
+                   <a href={selectedAd.libraryUrl} target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white py-3.5 rounded-xl transition-colors font-bold text-sm">
+                       <Library size={18} /> Ver na Biblioteca (Meta)
+                   </a>
+               )}
                {selectedAd.targetUrl ? (
                    <a href={selectedAd.targetUrl} target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-2 bg-green-600 hover:bg-green-500 text-white py-3.5 rounded-xl transition-colors font-bold text-sm shadow-lg shadow-green-900/20">
                        <ExternalLink size={18} /> Abrir Página de Vendas
                    </a>
                ) : (
-                   <button disabled className="flex-1 flex items-center justify-center gap-2 bg-slate-800 text-slate-500 py-3.5 rounded-xl font-bold text-sm cursor-not-allowed">
-                       Link Indisponível
+                   <button disabled className="flex-1 flex items-center justify-center gap-2 bg-slate-800/50 text-slate-500 py-3.5 rounded-xl font-bold text-sm cursor-not-allowed border border-slate-800">
+                       Vendas Indisponível
                    </button>
                )}
             </div>
