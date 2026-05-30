@@ -2,7 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import {
   Settings, Zap, Target, Crosshair, Loader2, Lock, ArrowRight, 
-  LayoutDashboard, PlayCircle, Image as ImageIcon, BarChart2, X, Terminal, AlertCircle, Code
+  LayoutDashboard, PlayCircle, Image as ImageIcon, BarChart2, X, Terminal, 
+  AlertCircle, Code, ExternalLink, Calendar, ThumbsUp, Layers
 } from 'lucide-react';
 
 const StatusBadge = ({ status }) => {
@@ -19,11 +20,15 @@ const StatusBadge = ({ status }) => {
   );
 };
 
-const PlatformBadge = ({ platform }) => (
-  <span className="bg-slate-900/80 backdrop-blur-sm text-slate-200 px-2 py-0.5 rounded text-xs font-semibold border border-slate-700/50">
-    {platform}
-  </span>
-);
+const PlatformBadge = ({ platform }) => {
+  // Limita o tamanho do texto se houver muitas plataformas
+  const text = platform.length > 20 ? platform.substring(0, 20) + "..." : platform;
+  return (
+    <span className="bg-slate-900/80 backdrop-blur-sm text-slate-200 px-2 py-0.5 rounded text-xs font-semibold border border-slate-700/50">
+      {text}
+    </span>
+  );
+};
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -202,30 +207,53 @@ export default function App() {
       addLog(`Sucesso total! ${adsToProcess.length} anúncios transferidos.`, 'success');
 
       const formattedAds = adsToProcess.map((rawData, index) => {
-        // Extrai o objeto real do anúncio, lidando com a estrutura aninhada "ad.snapshot" ou "ad"
         const coreItem = rawData.node || rawData.ad?.snapshot || rawData.ad || rawData.data || rawData;
-        const rootItem = rawData; // Para dados que possam estar na raiz, como page_name
+        const rootItem = rawData;
 
-        // 1. Extração Inteligente do Anunciante
+        // 1. Anunciante
         const advertiser = coreItem.pageName || coreItem.page_name || rootItem.page_name || rootItem.pageName || coreItem.publisherPlatform || coreItem.profileName || coreItem.advertiser_name || "Anunciante Oculto";
         
-        // 2. Extração Otimizada do Texto
+        // 2. Texto
         let copyText = coreItem.text || coreItem.primaryText || coreItem.message || coreItem.body?.text || coreItem.body || coreItem.caption || rootItem.text || "";
         if (!copyText && coreItem.bodies && coreItem.bodies.length > 0) copyText = coreItem.bodies[0].text || coreItem.bodies[0];
         if (!copyText && coreItem.adCreativeBodies && coreItem.adCreativeBodies.length > 0) copyText = coreItem.adCreativeBodies[0].text || coreItem.adCreativeBodies[0];
-        
         if (typeof copyText === 'object') copyText = JSON.stringify(copyText);
         if (!copyText || copyText.trim() === "") copyText = "Sem descrição disponível na biblioteca.";
 
-        // 3. Extração do Título
+        // 3. Título
         let title = coreItem.title || coreItem.headline || rootItem.title || "";
         if (!title && coreItem.titles && coreItem.titles.length > 0) title = coreItem.titles[0].text || coreItem.titles[0];
         if (!title && coreItem.adCreativeLinkTitles && coreItem.adCreativeLinkTitles.length > 0) title = coreItem.adCreativeLinkTitles[0].text || coreItem.adCreativeLinkTitles[0];
-        
         if (!title && advertiser !== "Anunciante Oculto") title = `Anúncio de ${advertiser}`;
         if (!title || typeof title === 'object') title = "Oferta Encontrada";
 
-        // 4. Extração de URL de Vídeo Real (Para reproduzir no cartão)
+        // 4. Extrair Link Real (Página de Vendas / Destino)
+        let targetUrl = coreItem.link_url || coreItem.snapshot?.link_url || rootItem.link_url || rootItem.ad_url || rootItem.page_url || "";
+        if (!targetUrl && coreItem.cards && coreItem.cards.length > 0) {
+           targetUrl = coreItem.cards[0].link_url;
+        }
+
+        // 5. Extrair Datas & Calcular Status (Teste, Validado, Escalando)
+        let startDateRaw = coreItem.start_date || rootItem.start_date || coreItem.creation_time;
+        let daysActive = 1;
+        if (startDateRaw) {
+            try {
+                let startObj;
+                if (typeof startDateRaw === 'number') {
+                    startObj = new Date(startDateRaw > 9999999999 ? startDateRaw : startDateRaw * 1000);
+                } else {
+                    startObj = new Date(startDateRaw);
+                }
+                const diffTime = Math.abs(new Date() - startObj);
+                daysActive = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            } catch(e) { daysActive = 1; }
+        }
+
+        let adStatus = "Teste";
+        if (daysActive > 10) adStatus = "Escalando";
+        else if (daysActive >= 3) adStatus = "Validado";
+
+        // 6. Vídeo Real
         let videoUrl = coreItem.video_url || coreItem.videoUrl || coreItem.videoHdUrl || rootItem.video_url || null;
         if (!videoUrl && coreItem.media && coreItem.media.video_url) videoUrl = coreItem.media.video_url;
         if (!videoUrl && coreItem.videos && coreItem.videos.length > 0) {
@@ -235,14 +263,9 @@ export default function App() {
             videoUrl = rootItem.media.videos[0].video_hd_url || rootItem.media.videos[0].video_sd_url;
         }
 
-        // 5. Extração da Imagem / Thumbnail
+        // 7. Imagem / Thumbnail
         let mediaUrl = null;
-        
-        // Verifica primeiro em rootItem.media
-        if (rootItem.media) {
-            mediaUrl = rootItem.media.primary_thumbnail || rootItem.media.video_preview_image_url || rootItem.media.image_url || rootItem.media.thumbnail_url;
-        }
-        
+        if (rootItem.media) mediaUrl = rootItem.media.primary_thumbnail || rootItem.media.video_preview_image_url || rootItem.media.image_url || rootItem.media.thumbnail_url;
         if (!mediaUrl && coreItem.media) {
             mediaUrl = coreItem.media.primary_thumbnail || coreItem.media.video_preview_image_url || coreItem.media.image_url || coreItem.media.thumbnail_url;
             if(!mediaUrl && coreItem.media.images && coreItem.media.images.length > 0) mediaUrl = coreItem.media.images[0];
@@ -250,18 +273,11 @@ export default function App() {
         if (!mediaUrl && coreItem.images && coreItem.images.length > 0) {
           mediaUrl = coreItem.images[0].originalImageUrl || coreItem.images[0].resizedImageUrls?.[0]?.url || coreItem.images[0].url || (typeof coreItem.images[0] === 'string' ? coreItem.images[0] : null);
         }
-        if (!mediaUrl && coreItem.snapshot && coreItem.snapshot.images && coreItem.snapshot.images.length > 0) {
-            mediaUrl = coreItem.snapshot.images[0].url; 
-        }
-        if (!mediaUrl && coreItem.adCreativeMedia && coreItem.adCreativeMedia.length > 0) {
-          mediaUrl = coreItem.adCreativeMedia[0].image_url || coreItem.adCreativeMedia[0].imageUrl;
-        }
-        if (!mediaUrl && coreItem.videos && coreItem.videos.length > 0) {
-          mediaUrl = coreItem.videos[0].video_preview_image_url || coreItem.videos[0].videoPreviewImageUrl || coreItem.videos[0].previewUrl || coreItem.videos[0].imageUrl || coreItem.videos[0].coverUrl || (typeof coreItem.videos[0] === 'string' ? coreItem.videos[0] : null);
-        }
+        if (!mediaUrl && coreItem.snapshot && coreItem.snapshot.images && coreItem.snapshot.images.length > 0) mediaUrl = coreItem.snapshot.images[0].url; 
+        if (!mediaUrl && coreItem.adCreativeMedia && coreItem.adCreativeMedia.length > 0) mediaUrl = coreItem.adCreativeMedia[0].image_url || coreItem.adCreativeMedia[0].imageUrl;
+        if (!mediaUrl && coreItem.videos && coreItem.videos.length > 0) mediaUrl = coreItem.videos[0].video_preview_image_url || coreItem.videos[0].videoPreviewImageUrl || coreItem.videos[0].previewUrl || coreItem.videos[0].imageUrl || coreItem.videos[0].coverUrl || (typeof coreItem.videos[0] === 'string' ? coreItem.videos[0] : null);
         if (!mediaUrl) mediaUrl = coreItem.image_url || coreItem.imageUrl || coreItem.thumbnailUrl || coreItem.thumbnail_url || coreItem.picture || coreItem.image || coreItem.cover_image || rootItem.page_profile_picture_url;
-
-        // Varrer código em busca de imagens ou vídeos como último recurso
+        
         if (!mediaUrl || !videoUrl) {
             const jsonStr = JSON.stringify(rawData);
             if (!mediaUrl) {
@@ -281,16 +297,21 @@ export default function App() {
         else if (coreItem.mediaType === 'video' || coreItem.display_format === 'VIDEO') isVideo = true;
         else if (rootItem.media?.type === 'video') isVideo = true;
 
+        const platformsRaw = Array.isArray(rootItem.platforms) ? rootItem.platforms : Array.isArray(coreItem.publisherPlatforms) ? coreItem.publisherPlatforms : coreItem.platforms ? coreItem.platforms : ["FACEBOOK"];
+        const platformString = Array.isArray(platformsRaw) ? platformsRaw.join(', ') : platformsRaw;
+
         return {
           id: Date.now() + index,
           title: title,
           advertiser: advertiser,
           copy: copyText,
+          targetUrl: targetUrl,
+          daysActive: daysActive,
+          platformCount: Array.isArray(platformsRaw) ? platformsRaw.length : 1,
           niche: "Geral",
-          platform: Array.isArray(rootItem.platforms) ? rootItem.platforms.join(', ') : Array.isArray(coreItem.publisherPlatforms) ? coreItem.publisherPlatforms.join(', ') : coreItem.platforms ? coreItem.platforms.join(', ') : "Facebook",
-          // CORREÇÃO: Removido a variável fantasma "item" e substituída por coreItem
+          platform: platformString,
           likesCount: rootItem.page_likes || coreItem.likeCount || coreItem.page_likes || Math.floor(Math.random() * 800) + 100,
-          status: "Validado",
+          status: adStatus,
           type: isVideo ? "Vídeo" : "Imagem",
           mediaUrl: mediaUrl,
           videoUrl: videoUrl,
@@ -305,7 +326,16 @@ export default function App() {
         };
       });
 
-      setAds(formattedAds);
+      // Ordenar: Escalando > Validado > Teste
+      const sortedAds = formattedAds.sort((a, b) => {
+        if (a.status === 'Escalando' && b.status !== 'Escalando') return -1;
+        if (b.status === 'Escalando' && a.status !== 'Escalando') return 1;
+        if (a.status === 'Validado' && b.status === 'Teste') return -1;
+        if (b.status === 'Validado' && a.status === 'Teste') return 1;
+        return b.daysActive - a.daysActive; // Desempate por dias rodando
+      });
+
+      setAds(sortedAds);
 
     } catch (error) {
       console.error("Erro detetado:", error);
@@ -438,7 +468,6 @@ export default function App() {
                     
                     <div className={`h-48 w-full bg-gradient-to-br ${ad.color} relative flex items-center justify-center overflow-hidden`}>
                       
-                      {/* LÓGICA DE MÍDIA ATUALIZADA (Vídeos Reais + Imagens Desbloqueadas) */}
                       {ad.videoUrl ? (
                           <video 
                               src={ad.videoUrl} 
@@ -459,7 +488,6 @@ export default function App() {
                          <div className="absolute inset-0 bg-black/40 group-hover:bg-transparent transition-colors z-0"></div>
                       )}
                       
-                      {/* Fallback de Ícones e Badges */}
                       {ad.type === 'Vídeo' && !ad.videoUrl ? (
                         <PlayCircle className="w-14 h-14 text-white/90 drop-shadow-xl z-10 pointer-events-none" />
                       ) : (
@@ -476,10 +504,23 @@ export default function App() {
                         <p className="text-sm text-slate-400 line-clamp-4 italic">"{ad.copy}"</p>
                       </div>
 
-                      <div className="mt-4 pt-4 border-t border-slate-800 flex items-center justify-between">
+                      {/* NÚMEROS E MÉTRICAS DO ANÚNCIO */}
+                      <div className="flex items-center gap-4 mt-4 mb-1 text-xs text-slate-400 font-medium px-1">
+                        <span className="flex items-center gap-1.5" title="Dias que o anúncio está no ar">
+                            <Calendar className="w-3.5 h-3.5 text-slate-500"/> {ad.daysActive} dias a rodar
+                        </span>
+                        <span className="flex items-center gap-1.5" title="Likes na Página">
+                            <ThumbsUp className="w-3.5 h-3.5 text-slate-500"/> {(ad.likesCount / 1000).toFixed(1)}k likes
+                        </span>
+                        <span className="flex items-center gap-1.5" title="Plataformas">
+                            <Layers className="w-3.5 h-3.5 text-slate-500"/> {ad.platformCount} redes
+                        </span>
+                      </div>
+
+                      <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
                         <StatusBadge status={ad.status} />
                         <button onClick={() => setSelectedAd(ad)} className="text-sm font-bold text-green-500 hover:text-green-400 flex items-center gap-1 transition-colors">
-                          <BarChart2 className="w-4 h-4" /> Ver Análise
+                          <BarChart2 className="w-4 h-4" /> Detalhes
                         </button>
                       </div>
                     </div>
@@ -526,16 +567,21 @@ export default function App() {
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl shadow-2xl p-6 flex flex-col max-h-[90vh]">
             <div className="flex justify-between items-start mb-6">
               <div>
-                <h2 className="font-bold text-2xl text-white">{selectedAd.advertiser}</h2>
-                <p className="text-slate-400 text-sm mt-1">Análise de IA do Criativo</p>
+                <div className="flex items-center gap-3">
+                  <h2 className="font-bold text-2xl text-white">{selectedAd.advertiser}</h2>
+                  <StatusBadge status={selectedAd.status} />
+                </div>
+                <p className="text-slate-400 text-sm mt-1 flex items-center gap-3">
+                   <span><Calendar className="w-3.5 h-3.5 inline mr-1" /> Há {selectedAd.daysActive} dias no ar</span>
+                   <span><ThumbsUp className="w-3.5 h-3.5 inline mr-1" /> {(selectedAd.likesCount / 1000).toFixed(1)}k Seguidores</span>
+                </p>
               </div>
               <button onClick={() => setSelectedAd(null)} className="text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 p-2 rounded-lg transition-colors"><X className="w-5 h-5" /></button>
             </div>
             
-            <div className="bg-slate-950 p-5 rounded-xl mb-6 overflow-y-auto border border-slate-800 flex-1">
+            <div className="bg-slate-950 p-5 rounded-xl mb-4 overflow-y-auto border border-slate-800 flex-1">
               <p className="text-slate-300 italic whitespace-pre-wrap">"{selectedAd.copy}"</p>
               
-              {/* Secção escondida com os dados originais (Modo Dev) */}
               {selectedAd.rawData && selectedAd.rawData !== "N/A - Anúncio Falso" && (
                 <details className="mt-6 border-t border-slate-800 pt-4">
                   <summary className="text-xs text-slate-500 cursor-pointer font-bold hover:text-slate-300 flex items-center gap-1">
@@ -547,6 +593,18 @@ export default function App() {
                 </details>
               )}
             </div>
+
+            {/* BOTÃO LINK DE DESTINO (LANDING PAGE DO ANÚNCIO) */}
+            {selectedAd.targetUrl && (
+                <a 
+                   href={selectedAd.targetUrl} 
+                   target="_blank" 
+                   rel="noreferrer" 
+                   className="mb-6 flex items-center justify-center gap-2 bg-green-600/10 hover:bg-green-600/20 text-green-400 border border-green-500/30 py-3 rounded-xl transition-colors font-bold text-sm"
+                >
+                    <ExternalLink size={16} /> Abrir Link de Destino do Anunciante
+                </a>
+            )}
             
             <div className="grid grid-cols-3 gap-4 text-center shrink-0">
               <div className="bg-slate-800 p-4 rounded-xl border border-slate-700">
