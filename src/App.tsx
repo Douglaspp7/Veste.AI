@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Settings, Zap, Target, Crosshair, Loader2, Lock, ArrowRight, 
   LayoutDashboard, PlayCircle, Image as ImageIcon, BarChart2, X, Terminal, 
-  AlertCircle, Code, ExternalLink, Calendar, ThumbsUp, Layers, Sparkles
+  AlertCircle, Code, ExternalLink, Calendar, ThumbsUp, Layers, Sparkles, Bot
 } from 'lucide-react';
 
 const StatusBadge = ({ status }) => {
@@ -44,7 +44,11 @@ export default function App() {
   // APIs
   const [apifyToken, setApifyToken] = useState('');
   const [actorId, setActorId] = useState('dz_omar/facebook-ads-scraper-pro'); 
+  
+  // IA Settings
+  const [aiProvider, setAiProvider] = useState('chatgpt'); // Default alterado para chatgpt
   const [geminiToken, setGeminiToken] = useState('');
+  const [chatGptToken, setChatGptToken] = useState('');
 
   // Modal e IA
   const [selectedAd, setSelectedAd] = useState(null);
@@ -58,38 +62,66 @@ export default function App() {
   useEffect(() => {
     const savedToken = localStorage.getItem('adsniper_apify_token');
     const savedActor = localStorage.getItem('adsniper_apify_actor');
+    const savedProvider = localStorage.getItem('adsniper_ai_provider');
     const savedGeminiToken = localStorage.getItem('adsniper_gemini_token');
+    const savedGptToken = localStorage.getItem('adsniper_gpt_token');
     
     if (savedToken) setApifyToken(savedToken);
     if (savedActor) setActorId(savedActor);
-    if (savedGeminiToken && !savedGeminiToken.startsWith('//')) {
-        setGeminiToken(savedGeminiToken);
-    }
+    if (savedProvider) setAiProvider(savedProvider);
+    if (savedGeminiToken && !savedGeminiToken.startsWith('//')) setGeminiToken(savedGeminiToken);
+    if (savedGptToken) setChatGptToken(savedGptToken);
   }, []);
 
   const handleSaveSettings = () => {
     localStorage.setItem('adsniper_apify_token', apifyToken.trim());
     localStorage.setItem('adsniper_apify_actor', actorId.trim());
+    localStorage.setItem('adsniper_ai_provider', aiProvider);
     
-    const cleanGeminiToken = geminiToken.trim();
-    if (cleanGeminiToken !== '') {
-         localStorage.setItem('adsniper_gemini_token', cleanGeminiToken);
-    } else {
-         localStorage.removeItem('adsniper_gemini_token');
-    }
+    if (geminiToken.trim() !== '') localStorage.setItem('adsniper_gemini_token', geminiToken.trim());
+    else localStorage.removeItem('adsniper_gemini_token');
+
+    if (chatGptToken.trim() !== '') localStorage.setItem('adsniper_gpt_token', chatGptToken.trim());
+    else localStorage.removeItem('adsniper_gpt_token');
 
     setShowSettings(false);
     addLog('Configurações guardadas com sucesso.', 'success');
   };
 
-  const callGeminiWithRetry = async (prompt, token, retries = 5) => {
+  const callChatGPT = async (prompt, token) => {
+    if (!token) throw new Error("Chave da OpenAI (ChatGPT) não configurada.");
+    
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+            model: 'gpt-4o-mini', // Modelo ultra-rápido e económico da OpenAI
+            messages: [
+                { role: 'system', content: 'Você é um Especialista de Elite em Facebook Ads e Copywriting.' },
+                { role: 'user', content: prompt }
+            ],
+            temperature: 0.7
+        })
+    });
+
+    if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error?.message || "Erro de ligação à OpenAI");
+    }
+
+    const data = await response.json();
+    return data.choices[0].message.content;
+  };
+
+  const callGeminiWithRetry = async (prompt, token, retries = 3) => {
     let apiKey = token || "";
-
-    // NOVO: Piloto Automático de Modelos. Se um falhar (404), tenta o próximo.
     let modelOptions = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-pro"];
-    if (!apiKey) modelOptions = ["gemini-2.5-flash-preview-09-2025"]; // Modelo secreto do Canvas
+    if (!apiKey) modelOptions = ["gemini-2.5-flash-preview-09-2025"];
 
-    const delays = [1000, 2000, 4000, 8000, 16000];
+    const delays = [1000, 2000, 4000];
     let attempt = 0;
     let currentModelIndex = 0;
     
@@ -106,23 +138,21 @@ export default function App() {
             
             if (!response.ok) {
                 const errData = await response.json().catch(() => ({}));
-                const errMsg = errData.error?.message || `Erro ${response.status} no servidor do Google Gemini`;
+                const errMsg = errData.error?.message || `Erro ${response.status} na Google Gemini`;
                 
-                // Se a Google devolver 404 (modelo não encontrado), tentamos imediatamente o próximo modelo da lista
                 if (response.status === 404 && currentModelIndex < modelOptions.length - 1) {
                     currentModelIndex++;
                     continue; 
                 }
-
                 throw new Error(errMsg);
             }
-            return await response.json();
+            const data = await response.json();
+            return data.candidates?.[0]?.content?.parts?.[0]?.text || "Resposta vazia da IA.";
         } catch (err) {
             if (err.message.includes('Failed to fetch')) {
-                throw new Error("O seu navegador ou AdBlocker bloqueou a comunicação com a API do Google. Por favor, desative o bloqueador de anúncios para este site e tente novamente.");
+                throw new Error("O seu navegador ou AdBlocker bloqueou a Google API.");
             }
-            
-            if (attempt === retries) throw new Error(`Falha na API da IA: ${err.message}`);
+            if (attempt === retries) throw new Error(`Falha Gemini: ${err.message}`);
             await new Promise(r => setTimeout(r, delays[attempt]));
             attempt++;
         }
@@ -130,12 +160,15 @@ export default function App() {
   };
 
   const analyzeAdWithAI = async (ad) => {
-    const cleanToken = geminiToken.trim();
     const isVercel = window.location.hostname !== 'localhost' && !window.location.hostname.includes('google');
     
-    if (isVercel && !cleanToken) {
-       alert("Por favor, adicione a sua Chave API do Gemini nas Configurações para gerar as análises.");
-       return;
+    if (isVercel) {
+       if (aiProvider === 'gemini' && !geminiToken.trim()) {
+           alert("Por favor, adicione a sua Chave API do Gemini nas Configurações."); return;
+       }
+       if (aiProvider === 'chatgpt' && !chatGptToken.trim()) {
+           alert("Por favor, adicione a sua Chave API do ChatGPT (OpenAI) nas Configurações."); return;
+       }
     }
 
     setIsAnalyzing(true);
@@ -153,8 +186,12 @@ Forneça um relatório direto contendo:
 3. COPY OTIMIZADA: Reescreva o texto focando em alta conversão (utilize frameworks como AIDA ou PAS) com emojis estratégicos e um Call To Action irresistível.`;
 
     try {
-        const data = await callGeminiWithRetry(prompt, cleanToken);
-        const feedback = data.candidates?.[0]?.content?.parts?.[0]?.text || "Erro ao gerar análise. Resposta vazia da IA.";
+        let feedback = "";
+        if (aiProvider === 'chatgpt') {
+            feedback = await callChatGPT(prompt, chatGptToken.trim());
+        } else {
+            feedback = await callGeminiWithRetry(prompt, geminiToken.trim());
+        }
         setAiFeedback(feedback);
     } catch (err) {
         setAiFeedback("Erro ao analisar: " + err.message);
@@ -665,16 +702,43 @@ Forneça um relatório direto contendo:
                   </div>
 
                   <div className="bg-slate-950 p-5 rounded-xl border border-slate-800">
-                    <h3 className="text-lg font-bold text-slate-200 mb-4 flex items-center gap-2"><Sparkles className="w-5 h-5 text-indigo-500"/> Análise IA (Google Gemini)</h3>
-                    <label className="block text-sm font-bold text-slate-400 mb-2">Chave de API do Gemini</label>
-                    <input 
-                      type="password" 
-                      value={geminiToken} 
-                      onChange={e => setGeminiToken(e.target.value)} 
-                      placeholder="AQ... ou AIzaSy..." 
-                      className="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-white outline-none focus:border-indigo-500 transition-colors mb-2" 
-                    />
-                    <p className="text-xs text-slate-500">Obtenha a sua chave gratuita no <a href="https://aistudio.google.com/" target="_blank" rel="noreferrer" className="text-indigo-400 hover:underline">Google AI Studio</a>. É necessária para gerar o relatório do consultor no seu site público.</p>
+                    <h3 className="text-lg font-bold text-slate-200 mb-4 flex items-center gap-2"><Sparkles className="w-5 h-5 text-indigo-500"/> Cérebro IA (Análise de Copy)</h3>
+                    
+                    <label className="block text-sm font-bold text-slate-400 mb-2">Qual provedor de IA deseja usar?</label>
+                    <select 
+                        value={aiProvider}
+                        onChange={e => setAiProvider(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-white outline-none focus:border-indigo-500 mb-4"
+                    >
+                        <option value="chatgpt">ChatGPT / OpenAI (Recomendado)</option>
+                        <option value="gemini">Google Gemini (Gratuito)</option>
+                    </select>
+
+                    {aiProvider === 'chatgpt' ? (
+                        <>
+                            <label className="block text-sm font-bold text-slate-400 mb-2 mt-4">Chave de API do ChatGPT</label>
+                            <input 
+                                type="password" 
+                                value={chatGptToken} 
+                                onChange={e => setChatGptToken(e.target.value)} 
+                                placeholder="sk-proj-..." 
+                                className="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-white outline-none focus:border-indigo-500 transition-colors mb-2" 
+                            />
+                            <p className="text-xs text-slate-500">Gere a sua chave no painel <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer" className="text-indigo-400 hover:underline">platform.openai.com</a>. Garante respostas mais rápidas e sem bloqueios.</p>
+                        </>
+                    ) : (
+                        <>
+                            <label className="block text-sm font-bold text-slate-400 mb-2 mt-4">Chave de API do Gemini</label>
+                            <input 
+                                type="password" 
+                                value={geminiToken} 
+                                onChange={e => setGeminiToken(e.target.value)} 
+                                placeholder="AIzaSy... ou AQ..." 
+                                className="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-white outline-none focus:border-indigo-500 transition-colors mb-2" 
+                            />
+                            <p className="text-xs text-slate-500">Gere a sua chave no painel <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-indigo-400 hover:underline">Google AI Studio</a>.</p>
+                        </>
+                    )}
                   </div>
 
                   <button onClick={handleSaveSettings} className="bg-green-600 w-full hover:bg-green-500 px-8 py-4 rounded-xl text-white font-bold transition-colors mt-4">
@@ -709,10 +773,12 @@ Forneça um relatório direto contendo:
               {/* ÁREA DA INTELIGÊNCIA ARTIFICIAL */}
               <div className="mt-8 border-t border-slate-800 pt-6">
                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-bold text-indigo-400 flex items-center gap-2"><Sparkles className="w-5 h-5"/> Consultor de Copy IA</h3>
+                    <h3 className="font-bold text-indigo-400 flex items-center gap-2">
+                       {aiProvider === 'chatgpt' ? <Bot className="w-5 h-5"/> : <Sparkles className="w-5 h-5"/>} Consultor de Copy IA
+                    </h3>
                     {!aiFeedback && !isAnalyzing && (
-                        <button onClick={() => analyzeAdWithAI(selectedAd)} className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 text-sm rounded-lg font-bold transition-colors shadow-lg shadow-indigo-500/20">
-                            Analisar e Otimizar Copy
+                        <button onClick={() => analyzeAdWithAI(selectedAd)} className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 text-sm rounded-lg font-bold transition-colors shadow-lg shadow-indigo-500/20 flex items-center gap-2">
+                            Analisar com {aiProvider === 'chatgpt' ? 'ChatGPT' : 'Gemini'}
                         </button>
                     )}
                  </div>
@@ -720,7 +786,7 @@ Forneça um relatório direto contendo:
                  {isAnalyzing && (
                     <div className="p-6 bg-indigo-500/10 border border-indigo-500/20 rounded-xl flex flex-col items-center justify-center text-indigo-400">
                         <Loader2 className="w-8 h-8 animate-spin mb-3" />
-                        <p className="font-medium">O Especialista IA está a dissecar esta Copy para si...</p>
+                        <p className="font-medium">O {aiProvider === 'chatgpt' ? 'ChatGPT' : 'Gemini'} está a dissecar esta Copy para si...</p>
                     </div>
                  )}
 
