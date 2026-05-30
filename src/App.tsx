@@ -40,6 +40,12 @@ const StatusToText = (score) => {
   return 'Teste';
 };
 
+const StatusToIcon = (score) => {
+  if (score >= 80) return Flame;
+  if (score >= 50) return CheckCircle;
+  return Clock;
+};
+
 const PlatformBadge = ({ platform }) => {
   const text = platform && typeof platform === 'string' && platform.length > 20 ? platform.substring(0, 20) + "..." : platform;
   return (
@@ -244,6 +250,7 @@ export default function App() {
     const safeActorId = actor.replace('/', '~');
     
     try {
+      // 150 é o sweet-spot para o Apify não demorar séculos e termos dados suficientes para o funil
       let payload = {
           searchQueries: [miningKeyword.trim()], 
           countries: "BR", activeStatus: "ACTIVE", adType: "ALL", 
@@ -265,7 +272,7 @@ export default function App() {
 
       setMiningProgress(20);
       setMiningStatusMsg('A iniciar missão de espionagem no Meta...');
-      addLog(`Robô detetado: enviando pesquisa (Max: 150 rápidos)...`);
+      addLog(`Robô detetado: enviando pesquisa (Max: 150)...`);
       
       const runResponse = await fetch(`https://api.apify.com/v2/acts/${safeActorId}/runs?token=${token}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
@@ -286,7 +293,7 @@ export default function App() {
       let finished = false;
       let timeoutCounter = 0; 
 
-      while (!finished && timeoutCounter < 30) {
+      while (!finished && timeoutCounter < 35) {
         await new Promise(r => setTimeout(r, 4000));
         timeoutCounter++;
         
@@ -428,6 +435,10 @@ export default function App() {
             const copyTrimmedForFallback = copyText.substring(0, 30).replace(/\s+/g, ' ').trim();
             const signature = baseDomain !== 'no-link' ? `${advertiser}_${baseDomain}` : `${advertiser}_${copyTrimmedForFallback}`;
 
+            // Conversão de RawData super segura
+            let safeRawData = "";
+            try { safeRawData = JSON.stringify(rawData, null, 2); } catch(e) { safeRawData = "Dados complexos omitidos para segurança."; }
+
             if (funnelMap.has(signature)) {
                 const existingAd = funnelMap.get(signature);
                 
@@ -484,7 +495,7 @@ export default function App() {
                   mediaUrl: mediaUrl,
                   videoUrl: videoUrl,
                   color: "from-slate-700 to-slate-900",
-                  rawData: JSON.stringify(rawData, null, 2),
+                  rawData: safeRawData,
                 });
             }
         } catch (itemError) {
@@ -495,41 +506,38 @@ export default function App() {
       // MOTOR V2: Aplicar Scoring e Tags Especiais
       const formattedAds = Array.from(funnelMap.values()).map(ad => {
           
-          // 1. Deteção de Acelerador de Gastos (Mais de 3 anúncios lançados nos últimos 7 dias)
-          const recentAdsCount = ad.allDates.filter(d => d <= 7).length;
+          // 1. Deteção de Acelerador de Gastos
+          const recentAdsCount = ad.allDates ? ad.allDates.filter(d => d <= 7).length : 0;
           ad.isAggressiveScale = recentAdsCount >= 3 && ad.adCount >= 5;
 
-          // 2. Deteção de A/B Testing (Várias copys diferentes para o mesmo link)
-          ad.isABTesting = ad.allCopies.size > 1 && ad.adCount >= 2;
+          // 2. Deteção de A/B Testing
+          ad.isABTesting = ad.allCopies && ad.allCopies.size > 1 && ad.adCount >= 2;
 
-          // 3. Deteção de Criativo Rei (Muito tempo + Volume)
+          // 3. Deteção de Criativo Rei
           ad.isCreativeKing = ad.daysActive > 30 && ad.adCount >= 10;
 
-          // 4. Deteção BlackHat / Agressivo (Por Padrões de Domínio)
+          // 4. Deteção BlackHat / Agressivo
           const suspiciousDomains = ['linktr.ee', 'bit.ly', 'shorturl', 'hotm.art', 'go.hotmart', 'monetizze', 'kiwify.com', 'perfectpay'];
           ad.isBlackHat = suspiciousDomains.some(d => ad.targetUrl.toLowerCase().includes(d)) || (getBaseDomain(ad.targetUrl).length > 25);
 
-          // 5. O SCORING ALGORITHM (0 a 100)
-          // - Volume de anúncios: Vale até 50 pontos (teto de 20 anúncios = 50 pts)
-          const adScore = Math.min((ad.adCount / 20) * 50, 50);
-          // - Dias no ar: Vale até 30 pontos (teto de 60 dias = 30 pts)
-          const daysScore = Math.min((ad.daysActive / 60) * 30, 30);
-          // - Multicanal: Vale até 20 pontos (4 plataformas = 20 pts)
-          const platformScore = Math.min((ad.platformCount / 4) * 20, 20);
+          // 5. SCORING ALGORITHM
+          const adScoreCalc = Math.min((ad.adCount / 20) * 50, 50);
+          const daysScoreCalc = Math.min((ad.daysActive / 60) * 30, 30);
+          const platformScoreCalc = Math.min((ad.platformCount / 4) * 20, 20);
           
-          let totalScore = Math.round(adScore + daysScore + platformScore);
+          let totalScore = Math.round(adScoreCalc + daysScoreCalc + platformScoreCalc);
           
-          // Boosts de IA
           if (ad.isAggressiveScale) totalScore = Math.min(totalScore + 10, 100);
           if (ad.isCreativeKing) totalScore = Math.min(totalScore + 15, 100);
 
-          ad.score = totalScore;
-          ad.status = StatusToText(totalScore);
+          ad.score = totalScore || 0;
+          ad.status = StatusToText(totalScore || 0);
 
           return ad;
       });
 
-      setAds(formattedAds.sort((a, b) => b.score - a.score));
+      // Ordenar por pontuação antes de gravar no estado
+      setAds(formattedAds.sort((a, b) => (b.score || 0) - (a.score || 0)));
 
       setMiningProgress(100);
       setMiningStatusMsg('Radar Concluído com Sucesso!');
@@ -554,26 +562,36 @@ export default function App() {
     const sourceAds = activeTab === 'vault' ? savedAds : ads;
     
     let filtered = sourceAds.filter(ad => {
-        if (ad.daysActive < minDaysFilter) return false;
+        const days = ad.daysActive || 0;
+        if (days < minDaysFilter) return false;
         if (mediaTypeFilter !== 'ALL' && ad.type !== mediaTypeFilter) return false;
         return true;
     });
 
     return filtered.sort((a, b) => {
+        const scoreA = a.score || 0;
+        const scoreB = b.score || 0;
+        const daysA = a.daysActive || 0;
+        const daysB = b.daysActive || 0;
+
         if (sortBy === 'score') {
-            return b.score - a.score;
+            return scoreB - scoreA;
         } else if (sortBy === 'recentes') {
-            return a.daysActive - b.daysActive;
+            return daysA - daysB;
         } else if (sortBy === 'antigos') {
-            return b.daysActive - a.daysActive;
+            return daysB - daysA;
         }
         return 0;
     });
   };
 
-  const maxDaysAvailable = (ads.length > 0 || savedAds.length > 0) 
-      ? Math.max(...(activeTab === 'vault' ? savedAds : ads).map(a => a.daysActive), 30) 
-      : 30;
+  // Cálculo seguro do máximo de dias para o Slider
+  let calcMaxDays = 30;
+  const allAvailableDays = (activeTab === 'vault' ? savedAds : ads).map(a => a.daysActive || 0).filter(d => !isNaN(d));
+  if (allAvailableDays.length > 0) {
+      calcMaxDays = Math.max(...allAvailableDays, 30);
+  }
+  const maxDaysAvailable = calcMaxDays;
 
   if (!isAuthenticated) {
     return (
@@ -592,7 +610,7 @@ export default function App() {
                 <input type="password" placeholder="Chave de Acesso" className="w-full bg-slate-950 border border-slate-800 focus:border-green-500 text-white rounded-lg px-4 py-3 outline-none" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} />
                 {loginError && <p className="text-red-400 text-xs mt-2">Senha incorreta.</p>}
               </div>
-              <button type="submit" className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-lg flex justify-center items-center gap-2">Entrar <ArrowRight className="w-4 h-4" /></button>
+              <button type="submit" className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-lg flex justify-center items-center gap-2 transition-colors">Entrar <ArrowRight className="w-4 h-4" /></button>
             </form>
           </div>
         </div>
@@ -726,7 +744,7 @@ export default function App() {
                                 <img src={ad.profilePic} alt="Avatar" className="w-10 h-10 rounded-full border border-slate-700 object-cover" />
                             ) : (
                                 <div className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-slate-400">
-                                    {ad.advertiser.charAt(0).toUpperCase()}
+                                    {ad.advertiser?.charAt(0).toUpperCase() || "A"}
                                 </div>
                             )}
                             <div className="flex flex-col truncate pr-2">
@@ -739,7 +757,7 @@ export default function App() {
                             {/* Score Box */}
                             <div className="flex flex-col items-center justify-center bg-slate-950 border border-slate-800 px-3 py-1 rounded-xl shrink-0">
                                 <span className={`text-sm font-bold ${ad.score >= 80 ? 'text-green-400' : ad.score >= 50 ? 'text-yellow-400' : 'text-slate-400'}`}>
-                                    {ad.score}
+                                    {ad.score || 0}
                                 </span>
                                 <span className="text-[8px] text-slate-500 uppercase tracking-widest font-bold">Score</span>
                             </div>
@@ -750,14 +768,23 @@ export default function App() {
                         </div>
                     </div>
 
-                    {/* Media Container (Compacto) */}
+                    {/* Media Container (Compacto) SEM AUTOPLAY (Previne a Tela Branca!) */}
                     <div className={`h-48 w-full bg-slate-950 relative flex items-center justify-center overflow-hidden border-b border-slate-800`}>
                       {ad.videoUrl ? (
-                          <video src={ad.videoUrl} muted loop autoPlay playsInline referrerPolicy="no-referrer" className="absolute inset-0 w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity z-0" />
+                          <video 
+                              src={ad.videoUrl} 
+                              poster={ad.mediaUrl || ''}
+                              muted loop playsInline 
+                              onMouseEnter={(e) => e.target.play()}
+                              onMouseLeave={(e) => e.target.pause()}
+                              referrerPolicy="no-referrer" 
+                              className="absolute inset-0 w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity z-0" 
+                          />
                       ) : ad.mediaUrl ? (
                          <img src={ad.mediaUrl} alt="Criativo" referrerPolicy="no-referrer" onError={(e) => { e.currentTarget.style.display = 'none'; }} className="absolute inset-0 w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity z-0" />
                       ) : ( <ImageIcon className="text-slate-800 w-12 h-12" /> )}
-                      {ad.type === 'Vídeo' && !ad.videoUrl && <PlayCircle className="w-12 h-12 text-white/50 z-10" />}
+                      
+                      {ad.type === 'Vídeo' && <PlayCircle className="w-12 h-12 text-white/50 z-10 pointer-events-none group-hover:opacity-0 transition-opacity" />}
                       <div className="absolute top-2 left-2 z-10 pointer-events-none flex flex-col gap-1.5">
                           <PlatformBadge platform={ad.platform} />
                       </div>
@@ -767,13 +794,13 @@ export default function App() {
                     <div className="p-5 flex-1 flex flex-col bg-slate-900">
                       
                       <h3 className="font-bold text-white text-[15px] leading-tight line-clamp-2 mb-3">
-                          {ad.title !== 'Oferta Encontrada' && ad.title !== `Anúncio de ${ad.advertiser}` ? ad.title : ad.copy.split('\n')[0]}
+                          {ad.title !== 'Oferta Encontrada' && ad.title !== `Anúncio de ${ad.advertiser}` ? ad.title : (ad.copy || "").split('\n')[0]}
                       </h3>
 
                       {/* Badges de Categoria e Inteligência */}
                       <div className="flex flex-wrap gap-2 mb-3">
                           <FusionBadge text={ad.niche} />
-                          <FusionBadge icon={StatusToIcon(ad.score)} text={ad.status} variant={StatusToVariant(ad.score)} />
+                          <FusionBadge icon={StatusToIcon(ad.score || 0)} text={ad.status || "Teste"} variant={StatusToVariant(ad.score || 0)} />
                           
                           {/* Badges Inteligentes do Motor V2 */}
                           {ad.isAggressiveScale && <FusionBadge icon={Rocket} text="Acelerador" variant="danger" />}
@@ -857,12 +884,12 @@ export default function App() {
                   {selectedAd.profilePic ? (
                       <img src={selectedAd.profilePic} className="w-12 h-12 rounded-full border-2 border-slate-700 object-cover" />
                   ) : (
-                      <div className="w-12 h-12 rounded-full bg-slate-800 border-2 border-slate-700 flex items-center justify-center font-bold text-lg text-slate-400">{selectedAd.advertiser.charAt(0)}</div>
+                      <div className="w-12 h-12 rounded-full bg-slate-800 border-2 border-slate-700 flex items-center justify-center font-bold text-lg text-slate-400">{selectedAd.advertiser?.charAt(0) || "A"}</div>
                   )}
                   <div>
                       <h2 className="font-bold text-xl text-white leading-none mb-2">{selectedAd.advertiser}</h2>
                       <div className="flex flex-wrap gap-2">
-                         <FusionBadge text={selectedAd.status} variant={StatusToVariant(selectedAd.score)} icon={StatusToIcon(selectedAd.score)} />
+                         <FusionBadge text={selectedAd.status} variant={StatusToVariant(selectedAd.score || 0)} icon={StatusToIcon(selectedAd.score || 0)} />
                          {selectedAd.isAggressiveScale && <FusionBadge icon={Rocket} text="Acelerador" variant="danger" />}
                          {selectedAd.isABTesting && <FusionBadge icon={SplitSquareHorizontal} text="A/B Testing" variant="brand" />}
                          {selectedAd.isCreativeKing && <FusionBadge icon={Trophy} text="Criativo Rei" variant="gold" />}
@@ -872,7 +899,7 @@ export default function App() {
               <div className="flex items-center gap-3">
                   <div className="hidden sm:flex flex-col items-center justify-center bg-slate-950 border border-slate-700 px-4 py-1.5 rounded-xl shrink-0">
                       <span className={`text-xl font-black ${selectedAd.score >= 80 ? 'text-green-400' : selectedAd.score >= 50 ? 'text-yellow-400' : 'text-slate-400'}`}>
-                          {selectedAd.score}
+                          {selectedAd.score || 0}
                       </span>
                       <span className="text-[9px] text-slate-500 uppercase tracking-widest font-bold">Score</span>
                   </div>
