@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Settings, Zap, Target, Crosshair, Loader2, Lock, ArrowRight, 
   LayoutDashboard, PlayCircle, Image as ImageIcon, BarChart2, X, Terminal, 
-  AlertCircle, Code, ExternalLink, Calendar, ThumbsUp, Layers
+  AlertCircle, Code, ExternalLink, Calendar, ThumbsUp, Layers, Sparkles
 } from 'lucide-react';
 
 const StatusBadge = ({ status }) => {
@@ -21,7 +21,6 @@ const StatusBadge = ({ status }) => {
 };
 
 const PlatformBadge = ({ platform }) => {
-  // Limita o tamanho do texto se houver muitas plataformas
   const text = platform.length > 20 ? platform.substring(0, 20) + "..." : platform;
   return (
     <span className="bg-slate-900/80 backdrop-blur-sm text-slate-200 px-2 py-0.5 rounded text-xs font-semibold border border-slate-700/50">
@@ -41,10 +40,16 @@ export default function App() {
   const [miningError, setMiningError] = useState('');
   const [systemLogs, setSystemLogs] = useState([]);
   const [showSettings, setShowSettings] = useState(false);
+  
+  // APIs
   const [apifyToken, setApifyToken] = useState('');
   const [actorId, setActorId] = useState('dz_omar/facebook-ads-scraper-pro'); 
+  const [geminiToken, setGeminiToken] = useState('');
 
+  // Modal e IA
   const [selectedAd, setSelectedAd] = useState(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [aiFeedback, setAiFeedback] = useState("");
 
   const addLog = (msg, type = 'info') => {
     setSystemLogs(prev => [...prev.slice(-6), { msg, type, time: new Date().toLocaleTimeString() }]);
@@ -53,15 +58,68 @@ export default function App() {
   useEffect(() => {
     const savedToken = localStorage.getItem('adsniper_apify_token');
     const savedActor = localStorage.getItem('adsniper_apify_actor');
+    const savedGemini = localStorage.getItem('adsniper_gemini_token');
     if (savedToken) setApifyToken(savedToken);
     if (savedActor) setActorId(savedActor);
+    if (savedGemini) setGeminiToken(savedGemini);
   }, []);
 
   const handleSaveSettings = () => {
     localStorage.setItem('adsniper_apify_token', apifyToken.trim());
     localStorage.setItem('adsniper_apify_actor', actorId.trim());
+    localStorage.setItem('adsniper_gemini_token', geminiToken.trim());
     setShowSettings(false);
     addLog('Configurações guardadas com sucesso.', 'success');
+  };
+
+  const callGeminiWithRetry = async (prompt, token, retries = 5) => {
+    const delays = [1000, 2000, 4000, 8000, 16000];
+    let attempt = 0;
+    while (attempt <= retries) {
+        try {
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${token}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+            });
+            if (!response.ok) throw new Error("Erro na API da Gemini");
+            return await response.json();
+        } catch (err) {
+            if (attempt === retries) throw new Error("Falha na API da IA após várias tentativas. Verifique a sua chave.");
+            await new Promise(r => setTimeout(r, delays[attempt]));
+            attempt++;
+        }
+    }
+  };
+
+  const analyzeAdWithAI = async (ad) => {
+    if (!geminiToken) {
+        alert("Para usar a IA, adicione a sua Chave da API do Google Gemini nas Configurações da aplicação.");
+        return;
+    }
+    setIsAnalyzing(true);
+    setAiFeedback("");
+    
+    const prompt = `Atue como um Especialista de Elite em Facebook Ads e Copywriting. Analise este anúncio:
+    
+Anunciante: ${ad.advertiser}
+Produto/Nicho: ${ad.title}
+Copy Atual: "${ad.copy}"
+
+Forneça um relatório direto contendo:
+1. PONTOS FORTES: O que está bom nesta copy.
+2. PONTOS FRACOS: O que está a fazer o anunciante perder dinheiro.
+3. COPY OTIMIZADA: Reescreva o texto focando em alta conversão (utilize frameworks como AIDA ou PAS) com emojis estratégicos e um CTA forte.`;
+
+    try {
+        const data = await callGeminiWithRetry(prompt, geminiToken.trim());
+        const feedback = data.candidates?.[0]?.content?.parts?.[0]?.text || "Erro ao gerar análise. Resposta vazia da IA.";
+        setAiFeedback(feedback);
+    } catch (err) {
+        setAiFeedback("Erro: " + err.message);
+    } finally {
+        setIsAnalyzing(false);
+    }
   };
 
   const startMining = async () => {
@@ -213,7 +271,7 @@ export default function App() {
         // 1. Anunciante
         const advertiser = coreItem.pageName || coreItem.page_name || rootItem.page_name || rootItem.pageName || coreItem.publisherPlatform || coreItem.profileName || coreItem.advertiser_name || "Anunciante Oculto";
         
-        // 2. Texto
+        // 2. Texto da Copy
         let copyText = coreItem.text || coreItem.primaryText || coreItem.message || coreItem.body?.text || coreItem.body || coreItem.caption || rootItem.text || "";
         if (!copyText && coreItem.bodies && coreItem.bodies.length > 0) copyText = coreItem.bodies[0].text || coreItem.bodies[0];
         if (!copyText && coreItem.adCreativeBodies && coreItem.adCreativeBodies.length > 0) copyText = coreItem.adCreativeBodies[0].text || coreItem.adCreativeBodies[0];
@@ -227,13 +285,22 @@ export default function App() {
         if (!title && advertiser !== "Anunciante Oculto") title = `Anúncio de ${advertiser}`;
         if (!title || typeof title === 'object') title = "Oferta Encontrada";
 
-        // 4. Extrair Link Real (Página de Vendas / Destino)
-        let targetUrl = coreItem.link_url || coreItem.snapshot?.link_url || rootItem.link_url || rootItem.ad_url || rootItem.page_url || "";
-        if (!targetUrl && coreItem.cards && coreItem.cards.length > 0) {
-           targetUrl = coreItem.cards[0].link_url;
+        // 4. Link de Destino Inteligente (External Link)
+        let targetUrl = coreItem.snapshot?.cards?.[0]?.link_url || coreItem.cards?.[0]?.link_url || coreItem.snapshot?.link_url || coreItem.link_url || rootItem.link_url || rootItem.ad_url || rootItem.page_url || "";
+        
+        // Se o link for do facebook (página de perfil), tentamos procurar um link externo na Copy ou Caption
+        if (!targetUrl || targetUrl.includes('facebook.com') || targetUrl.includes('fb.me')) {
+             const urlRegex = /(https?:\/\/[^\s]+)/g;
+             const linksInCopy = copyText.match(urlRegex);
+             if (linksInCopy && linksInCopy.length > 0) {
+                 targetUrl = linksInCopy[0]; // Captura o primeiro link encontrado na descrição
+             } else if (coreItem.caption && coreItem.caption.includes('.')) {
+                 // Às vezes o "caption" tem o domínio limpo (ex: "lojadropp.com")
+                 targetUrl = coreItem.caption.startsWith('http') ? coreItem.caption : `https://${coreItem.caption}`;
+             }
         }
 
-        // 5. Extrair Datas & Calcular Status (Teste, Validado, Escalando)
+        // 5. Extrair Datas & Status
         let startDateRaw = coreItem.start_date || rootItem.start_date || coreItem.creation_time;
         let daysActive = 1;
         if (startDateRaw) {
@@ -326,13 +393,12 @@ export default function App() {
         };
       });
 
-      // Ordenar: Escalando > Validado > Teste
       const sortedAds = formattedAds.sort((a, b) => {
         if (a.status === 'Escalando' && b.status !== 'Escalando') return -1;
         if (b.status === 'Escalando' && a.status !== 'Escalando') return 1;
         if (a.status === 'Validado' && b.status === 'Teste') return -1;
         if (b.status === 'Validado' && a.status === 'Teste') return 1;
-        return b.daysActive - a.daysActive; // Desempate por dias rodando
+        return b.daysActive - a.daysActive; 
       });
 
       setAds(sortedAds);
@@ -504,7 +570,6 @@ export default function App() {
                         <p className="text-sm text-slate-400 line-clamp-4 italic">"{ad.copy}"</p>
                       </div>
 
-                      {/* NÚMEROS E MÉTRICAS DO ANÚNCIO */}
                       <div className="flex items-center gap-4 mt-4 mb-1 text-xs text-slate-400 font-medium px-1">
                         <span className="flex items-center gap-1.5" title="Dias que o anúncio está no ar">
                             <Calendar className="w-3.5 h-3.5 text-slate-500"/> {ad.daysActive} dias a rodar
@@ -519,7 +584,7 @@ export default function App() {
 
                       <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
                         <StatusBadge status={ad.status} />
-                        <button onClick={() => setSelectedAd(ad)} className="text-sm font-bold text-green-500 hover:text-green-400 flex items-center gap-1 transition-colors">
+                        <button onClick={() => { setSelectedAd(ad); setAiFeedback(""); }} className="text-sm font-bold text-green-500 hover:text-green-400 flex items-center gap-1 transition-colors">
                           <BarChart2 className="w-4 h-4" /> Detalhes
                         </button>
                       </div>
@@ -530,32 +595,45 @@ export default function App() {
             </div>
         ) : (
             <div className="max-w-2xl bg-slate-900 border border-slate-800 rounded-xl p-8 shadow-xl">
-                <h2 className="text-2xl font-bold text-white mb-2 flex items-center gap-2"><Settings className="text-green-500"/> Configurações da API</h2>
-                <p className="text-slate-400 mb-8">Insira as suas credenciais da plataforma Apify para permitir a extração de dados reais da Biblioteca de Anúncios.</p>
+                <h2 className="text-2xl font-bold text-white mb-2 flex items-center gap-2"><Settings className="text-green-500"/> Configurações de API</h2>
+                <p className="text-slate-400 mb-8">Configure os seus robôs e motores de IA para maximizar o poder de pesquisa.</p>
                 
                 <div className="space-y-6">
-                  <div>
-                    <label className="block text-sm font-bold text-slate-300 mb-2">Token da API (Apify)</label>
+                  <div className="bg-slate-950 p-5 rounded-xl border border-slate-800">
+                    <h3 className="text-lg font-bold text-slate-200 mb-4 flex items-center gap-2"><Zap className="w-5 h-5 text-green-500"/> Extração (Apify)</h3>
+                    <label className="block text-sm font-bold text-slate-400 mb-2">Token da API (Apify)</label>
                     <input 
                       type="password" 
                       value={apifyToken} 
                       onChange={e => setApifyToken(e.target.value)} 
                       placeholder="apify_api_..." 
-                      className="w-full bg-slate-950 border border-slate-700 p-4 rounded-xl text-white outline-none focus:border-green-500 transition-colors" 
+                      className="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-white outline-none focus:border-green-500 transition-colors mb-4" 
                     />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-bold text-slate-300 mb-2">ID do Actor (Robô)</label>
+                    
+                    <label className="block text-sm font-bold text-slate-400 mb-2">ID do Actor (Robô)</label>
                     <input 
                       type="text" 
                       value={actorId} 
                       onChange={e => setActorId(e.target.value)} 
-                      className="w-full bg-slate-950 border border-slate-700 p-4 rounded-xl text-slate-300 outline-none focus:border-green-500 transition-colors" 
+                      className="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-slate-300 outline-none focus:border-green-500 transition-colors" 
                     />
-                    <p className="text-xs text-slate-500 mt-2">Recomendado: dz_omar/facebook-ads-scraper-pro</p>
                   </div>
-                  <button onClick={handleSaveSettings} className="bg-green-600 hover:bg-green-500 px-8 py-3 rounded-xl text-white font-bold transition-colors mt-4">
-                    Guardar Configurações
+
+                  <div className="bg-slate-950 p-5 rounded-xl border border-slate-800">
+                    <h3 className="text-lg font-bold text-slate-200 mb-4 flex items-center gap-2"><Sparkles className="w-5 h-5 text-indigo-500"/> Análise IA (Google Gemini)</h3>
+                    <label className="block text-sm font-bold text-slate-400 mb-2">Chave de API do Gemini</label>
+                    <input 
+                      type="password" 
+                      value={geminiToken} 
+                      onChange={e => setGeminiToken(e.target.value)} 
+                      placeholder="AIzaSy..." 
+                      className="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-white outline-none focus:border-indigo-500 transition-colors" 
+                    />
+                    <p className="text-xs text-slate-500 mt-2">Usado para reescrever as copys e encontrar pontos fracos nos anúncios da concorrência.</p>
+                  </div>
+
+                  <button onClick={handleSaveSettings} className="bg-green-600 w-full hover:bg-green-500 px-8 py-4 rounded-xl text-white font-bold transition-colors mt-4">
+                    Guardar Todas as Configurações
                   </button>
                 </div>
             </div>
@@ -564,8 +642,8 @@ export default function App() {
 
       {selectedAd && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl shadow-2xl p-6 flex flex-col max-h-[90vh]">
-            <div className="flex justify-between items-start mb-6">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-3xl shadow-2xl p-6 flex flex-col max-h-[90vh]">
+            <div className="flex justify-between items-start mb-6 shrink-0">
               <div>
                 <div className="flex items-center gap-3">
                   <h2 className="font-bold text-2xl text-white">{selectedAd.advertiser}</h2>
@@ -576,33 +654,58 @@ export default function App() {
                    <span><ThumbsUp className="w-3.5 h-3.5 inline mr-1" /> {(selectedAd.likesCount / 1000).toFixed(1)}k Seguidores</span>
                 </p>
               </div>
-              <button onClick={() => setSelectedAd(null)} className="text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 p-2 rounded-lg transition-colors"><X className="w-5 h-5" /></button>
+              <button onClick={() => { setSelectedAd(null); setAiFeedback(""); }} className="text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 p-2 rounded-lg transition-colors"><X className="w-5 h-5" /></button>
             </div>
             
             <div className="bg-slate-950 p-5 rounded-xl mb-4 overflow-y-auto border border-slate-800 flex-1">
-              <p className="text-slate-300 italic whitespace-pre-wrap">"{selectedAd.copy}"</p>
+              <h3 className="font-bold text-slate-500 uppercase text-xs mb-2">Copy Original</h3>
+              <p className="text-slate-300 whitespace-pre-wrap leading-relaxed">"{selectedAd.copy}"</p>
               
+              {/* ÁREA DA INTELIGÊNCIA ARTIFICIAL */}
+              <div className="mt-8 border-t border-slate-800 pt-6">
+                 <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-bold text-indigo-400 flex items-center gap-2"><Sparkles className="w-5 h-5"/> Análise de Copy IA</h3>
+                    {!aiFeedback && !isAnalyzing && (
+                        <button onClick={() => analyzeAdWithAI(selectedAd)} className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 text-sm rounded-lg font-bold transition-colors">
+                            Gerar Análise
+                        </button>
+                    )}
+                 </div>
+                 
+                 {isAnalyzing && (
+                    <div className="p-6 bg-indigo-500/10 border border-indigo-500/20 rounded-xl flex flex-col items-center justify-center text-indigo-400">
+                        <Loader2 className="w-8 h-8 animate-spin mb-3" />
+                        <p className="font-medium">O Especialista IA está a dissecar esta Copy...</p>
+                    </div>
+                 )}
+
+                 {aiFeedback && (
+                    <div className="p-5 bg-indigo-950/30 border border-indigo-500/30 rounded-xl">
+                        <p className="text-slate-300 text-sm whitespace-pre-wrap leading-relaxed">{aiFeedback}</p>
+                    </div>
+                 )}
+              </div>
+
               {selectedAd.rawData && selectedAd.rawData !== "N/A - Anúncio Falso" && (
-                <details className="mt-6 border-t border-slate-800 pt-4">
-                  <summary className="text-xs text-slate-500 cursor-pointer font-bold hover:text-slate-300 flex items-center gap-1">
-                    <Code size={14}/> MODO PROGRAMADOR: Ver Dados Originais da Apify
+                <details className="mt-8 border-t border-slate-800 pt-4">
+                  <summary className="text-xs text-slate-500 cursor-pointer font-bold hover:text-slate-300 flex items-center gap-1 w-max">
+                    <Code size={14}/> MODO PROGRAMADOR: Dados Crus (JSON)
                   </summary>
-                  <pre className="text-[10px] text-green-400 mt-3 p-3 bg-black rounded border border-slate-800 overflow-x-auto">
+                  <pre className="text-[10px] text-emerald-400 mt-3 p-4 bg-black rounded-lg border border-slate-800 overflow-x-auto">
                     {selectedAd.rawData}
                   </pre>
                 </details>
               )}
             </div>
 
-            {/* BOTÃO LINK DE DESTINO (LANDING PAGE DO ANÚNCIO) */}
             {selectedAd.targetUrl && (
                 <a 
                    href={selectedAd.targetUrl} 
                    target="_blank" 
                    rel="noreferrer" 
-                   className="mb-6 flex items-center justify-center gap-2 bg-green-600/10 hover:bg-green-600/20 text-green-400 border border-green-500/30 py-3 rounded-xl transition-colors font-bold text-sm"
+                   className="shrink-0 mb-6 flex items-center justify-center gap-2 bg-green-600/10 hover:bg-green-600/20 text-green-400 border border-green-500/30 py-3 rounded-xl transition-colors font-bold text-sm"
                 >
-                    <ExternalLink size={16} /> Abrir Link de Destino do Anunciante
+                    <ExternalLink size={16} /> Abrir Página de Vendas (External Link)
                 </a>
             )}
             
