@@ -250,7 +250,6 @@ export default function App() {
     const safeActorId = actor.replace('/', '~');
     
     try {
-      // 150 é o sweet-spot para o Apify não demorar séculos e termos dados suficientes para o funil
       let payload = {
           searchQueries: [miningKeyword.trim()], 
           countries: "BR", activeStatus: "ACTIVE", adType: "ALL", 
@@ -340,8 +339,8 @@ export default function App() {
       if (adsToProcess.length === 0) adsToProcess = validAds; 
 
       setMiningProgress(95);
-      setMiningStatusMsg('Motor V2: A aplicar Agrupamento e Scoring...');
-      addLog(`Motor V2: Avaliando ${adsToProcess.length} anúncios...`, 'success');
+      setMiningStatusMsg('Motor V3: A aplicar Rankeamento por Anunciante (Fusion Logic)...');
+      addLog(`Motor V3: Agrupando ${adsToProcess.length} anúncios por Página...`, 'success');
 
       const getBaseDomain = (url) => {
           if (!url || url.includes('facebook.com') || url.includes('fb.me') || url.includes('instagram.com')) return 'no-link';
@@ -351,8 +350,8 @@ export default function App() {
           } catch(e) { return 'no-link'; }
       };
 
-      // MAPA DE AGRUPAMENTO DE FUNIL V2
-      const funnelMap = new Map();
+      // MAPA DE AGRUPAMENTO V3: Agrupa tudo pelo ANUNCIANTE (Page ID ou Nome)
+      const advertiserMap = new Map();
 
       adsToProcess.forEach((rawData, index) => {
         try {
@@ -431,47 +430,61 @@ export default function App() {
             let likesCount = rootItem.page_likes || coreItem.page_likes || Math.floor(Math.random() * 800) + 100;
             if (isNaN(likesCount)) likesCount = Math.floor(Math.random() * 800) + 100;
 
-            const baseDomain = getBaseDomain(targetUrl);
-            const copyTrimmedForFallback = copyText.substring(0, 30).replace(/\s+/g, ' ').trim();
-            const signature = baseDomain !== 'no-link' ? `${advertiser}_${baseDomain}` : `${advertiser}_${copyTrimmedForFallback}`;
+            // ASSINATURA V3 (NÍVEL FUSION ADS): Agrupa TUDO pelo Anunciante.
+            // Isso garante que se encontrarmos 12 anúncios diferentes do "Aprenda Já", eles formam 1 só cartão.
+            const signature = pageId ? `page_${pageId}` : `adv_${advertiser.trim().toLowerCase()}`;
 
-            // Conversão de RawData super segura
             let safeRawData = "";
             try { safeRawData = JSON.stringify(rawData, null, 2); } catch(e) { safeRawData = "Dados complexos omitidos para segurança."; }
 
-            if (funnelMap.has(signature)) {
-                const existingAd = funnelMap.get(signature);
+            if (advertiserMap.has(signature)) {
+                const existingAd = advertiserMap.get(signature);
                 
+                // Mapeamento de IDs puros da Meta para soma impecável
                 if (!existingAd.archiveIds) existingAd.archiveIds = {};
-                
                 if (!existingAd.archiveIds[adId] || countForThisArchive > existingAd.archiveIds[adId]) {
                     existingAd.archiveIds[adId] = countForThisArchive;
                 }
                 
+                // A grande mágica: Soma TOTAL de todos os anúncios encontrados desta Página!
                 existingAd.adCount = Object.values(existingAd.archiveIds).reduce((a, b) => a + b, 0);
 
                 if (daysActive > existingAd.daysActive) {
                     existingAd.daysActive = daysActive;
                 }
 
-                // INTELIGÊNCIA: Rastreamento de Datas e Copys
                 existingAd.allDates.push(daysActive);
+                
+                const copyTrimmedForFallback = copyText.substring(0, 30).replace(/\s+/g, ' ').trim();
                 existingAd.allCopies.add(copyTrimmedForFallback);
                 
-                // Mostra sempre o Vídeo mais forte
-                if (isVideo && !existingAd.isVideo) {
+                // SELETOR DO MELHOR CRIATIVO: Se for vídeo, ou se tiver mais peso (mais anúncios no mesmo ID), mostramos este
+                let shouldSwapCreative = false;
+                if (!existingAd.isVideo && isVideo) {
+                    shouldSwapCreative = true;
+                } else if (existingAd.isVideo === isVideo) {
+                    if (countForThisArchive > existingAd.bestIndividualAdCount) {
+                        shouldSwapCreative = true;
+                    }
+                }
+
+                if (shouldSwapCreative) {
                     existingAd.videoUrl = videoUrl;
                     existingAd.mediaUrl = mediaUrl;
-                    existingAd.type = "Vídeo";
+                    existingAd.type = isVideo ? "Vídeo" : "Imagem";
                     existingAd.formatType = formatType;
-                    existingAd.isVideo = true;
+                    existingAd.isVideo = isVideo;
                     existingAd.copy = copyText; 
+                    existingAd.title = title;
+                    if (targetUrl) existingAd.targetUrl = targetUrl;
+                    existingAd.bestIndividualAdCount = countForThisArchive;
+                    if (ticketPrice !== "Oculto") existingAd.ticketPrice = ticketPrice;
                 }
             } else {
                 const initialArchiveIds = {};
                 initialArchiveIds[adId] = countForThisArchive;
 
-                funnelMap.set(signature, {
+                advertiserMap.set(signature, {
                   id: adId,
                   title: title,
                   advertiser: advertiser,
@@ -482,9 +495,10 @@ export default function App() {
                   daysActive: daysActive,
                   ticketPrice: ticketPrice,
                   adCount: countForThisArchive, 
+                  bestIndividualAdCount: countForThisArchive,
                   archiveIds: initialArchiveIds, 
-                  allDates: [daysActive], // Para deteção de Acelerador
-                  allCopies: new Set([copyTrimmedForFallback]), // Para deteção de Teste A/B
+                  allDates: [daysActive], 
+                  allCopies: new Set([copyText.substring(0, 30).replace(/\s+/g, ' ').trim()]), 
                   niche: niche,
                   formatType: formatType,
                   platformCount: platformsRaw.length,
@@ -503,25 +517,26 @@ export default function App() {
         }
       });
 
-      // MOTOR V2: Aplicar Scoring e Tags Especiais
-      const formattedAds = Array.from(funnelMap.values()).map(ad => {
+      // MOTOR V3: Aplicar Scoring e Tags Especiais baseadas na Força Global da Página
+      const formattedAds = Array.from(advertiserMap.values()).map(ad => {
           
-          // 1. Deteção de Acelerador de Gastos
+          // Deteção de Escala Vertical (Muitos anúncios lançados agora)
           const recentAdsCount = ad.allDates ? ad.allDates.filter(d => d <= 7).length : 0;
           ad.isAggressiveScale = recentAdsCount >= 3 && ad.adCount >= 5;
 
-          // 2. Deteção de A/B Testing
+          // Deteção de A/B Testing
           ad.isABTesting = ad.allCopies && ad.allCopies.size > 1 && ad.adCount >= 2;
 
-          // 3. Deteção de Criativo Rei
+          // Deteção de Criativo Rei
           ad.isCreativeKing = ad.daysActive > 30 && ad.adCount >= 10;
 
-          // 4. Deteção BlackHat / Agressivo
+          // Deteção BlackHat
           const suspiciousDomains = ['linktr.ee', 'bit.ly', 'shorturl', 'hotm.art', 'go.hotmart', 'monetizze', 'kiwify.com', 'perfectpay'];
           ad.isBlackHat = suspiciousDomains.some(d => ad.targetUrl.toLowerCase().includes(d)) || (getBaseDomain(ad.targetUrl).length > 25);
 
-          // 5. SCORING ALGORITHM
-          const adScoreCalc = Math.min((ad.adCount / 20) * 50, 50);
+          // SCORING V3
+          // O teto de volume subiu para 30 (como agrupamos por página, os volumes serão bem maiores)
+          const adScoreCalc = Math.min((ad.adCount / 30) * 50, 50); 
           const daysScoreCalc = Math.min((ad.daysActive / 60) * 30, 30);
           const platformScoreCalc = Math.min((ad.platformCount / 4) * 20, 20);
           
@@ -536,7 +551,6 @@ export default function App() {
           return ad;
       });
 
-      // Ordenar por pontuação antes de gravar no estado
       setAds(formattedAds.sort((a, b) => (b.score || 0) - (a.score || 0)));
 
       setMiningProgress(100);
@@ -585,7 +599,6 @@ export default function App() {
     });
   };
 
-  // Cálculo seguro do máximo de dias para o Slider
   let calcMaxDays = 30;
   const allAvailableDays = (activeTab === 'vault' ? savedAds : ads).map(a => a.daysActive || 0).filter(d => !isNaN(d));
   if (allAvailableDays.length > 0) {
@@ -802,7 +815,7 @@ export default function App() {
                           <FusionBadge text={ad.niche} />
                           <FusionBadge icon={StatusToIcon(ad.score || 0)} text={ad.status || "Teste"} variant={StatusToVariant(ad.score || 0)} />
                           
-                          {/* Badges Inteligentes do Motor V2 */}
+                          {/* Badges Inteligentes do Motor V3 */}
                           {ad.isAggressiveScale && <FusionBadge icon={Rocket} text="Acelerador" variant="danger" />}
                           {ad.isABTesting && <FusionBadge icon={SplitSquareHorizontal} text="A/B Testing" variant="brand" />}
                           {ad.isCreativeKing && <FusionBadge icon={Trophy} text="Criativo Rei" variant="gold" />}
@@ -818,12 +831,12 @@ export default function App() {
                           <div className="flex flex-col items-center justify-center text-center">
                               <Layers size={14} className="text-indigo-400 mb-1" />
                               <span className="text-white font-bold text-sm">{ad.adCount}</span>
-                              <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Anúncios</span>
+                              <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Ads da Página</span>
                           </div>
                           <div className="flex flex-col items-center justify-center text-center border-l border-r border-slate-800">
                               <Calendar size={14} className="text-green-400 mb-1" />
                               <span className="text-white font-bold text-sm">{ad.daysActive}</span>
-                              <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Dias</span>
+                              <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Max Dias</span>
                           </div>
                           <div className="flex flex-col items-center justify-center text-center">
                               <DollarSign size={14} className="text-emerald-400 mb-1" />
