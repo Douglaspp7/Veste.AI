@@ -124,10 +124,18 @@ function GeneratorPage() {
   const audioRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
 
-  // NOVO: Estados para Legendas Dinâmicas (TikTok Style)
+  // Estados para Legendas Dinâmicas (TikTok Style)
   const [currentSubtitle, setCurrentSubtitle] = useState('');
   const [subtitlePos, setSubtitlePosition] = useState('bottom'); // top, middle, bottom
   const subtitleChunksRef = useRef([]);
+
+  // NOVO: Estado para controlar o Zoom do Vídeo e Camuflagem
+  const [videoZoom, setVideoZoom] = useState(1);
+  const [camouflageMode, setCamouflageMode] = useState('none'); // none, glass, blur
+
+  // NOVO: Estados para a Clonagem Visual (Prompt IA)
+  const [videoPrompt, setVideoPrompt] = useState('');
+  const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
 
   // Vozes disponíveis no Gemini TTS
   const voices = [
@@ -236,6 +244,53 @@ function GeneratorPage() {
       setErrorMsg(err.message);
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  const generateVideoPrompt = async () => {
+    const geminiToken = localStorage.getItem('adsniper_gemini_token');
+    if (!geminiToken) {
+      setErrorMsg("A chave da API do Google Gemini é OBRIGATÓRIA nas Configurações para analisar o vídeo visualmente.");
+      return;
+    }
+
+    setIsGeneratingPrompt(true);
+    setErrorMsg('');
+    setVideoPrompt('');
+    setStatusMsg('');
+
+    try {
+      if (videoFile.size > 6 * 1024 * 1024) {
+         throw new Error("O seu vídeo é muito pesado para ser analisado visualmente pela Gemini no navegador (Limitação de Base64). Para gerar prompt visual, o vídeo não pode passar de 6MB. Tente um trecho menor.");
+      }
+
+      const endpointUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${geminiToken}`;
+      
+      const aiPrompt = "You are an expert AI Video Prompt Engineer. Watch this video carefully. Generate a highly detailed, cinematic prompt in ENGLISH so I can recreate this exact visual scene using AI video generators like Runway Gen-3, Kling, or Sora. Describe the subject, their appearance, clothing, actions, the environment, lighting, camera angle, and camera movement. DO NOT describe any text, captions, graphics, or watermarks on the screen. Focus ONLY on the live-action or 3D animation visuals. Keep it cohesive and highly descriptive. Output ONLY the English prompt, ready to copy-paste.";
+
+      const parts = [
+        { text: aiPrompt },
+        { inlineData: { mimeType: videoMime, data: videoBase64 } }
+      ];
+
+      const response = await fetch(endpointUrl, {
+          method: 'POST', 
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: parts }] })
+      });
+      
+      if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(`Falha Gemini Vision: ${errData.error?.message || "O ficheiro é demasiado grande."}`);
+      }
+      const data = await response.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "Erro ao gerar prompt.";
+      
+      setVideoPrompt(text.trim());
+    } catch (err) {
+      setErrorMsg(err.message);
+    } finally {
+      setIsGeneratingPrompt(false);
     }
   };
 
@@ -510,6 +565,43 @@ function GeneratorPage() {
               </button>
             </div>
 
+            {/* NOVO: Bloco de Clonagem Visual (Prompt de Vídeo) */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold text-slate-300 flex items-center gap-2">
+                  <MonitorPlay size={18} className="text-blue-500" /> Clonagem Visual (Sora / Luma / Kling)
+                </h3>
+              </div>
+              <p className="text-xs text-slate-400 mb-4 leading-relaxed">
+                Não consegue esconder a legenda antiga? A IA "assiste" ao seu vídeo e escreve um Prompt Cinematográfico perfeito em Inglês para você recriar o fundo do zero numa IA Geradora de Vídeos.
+              </p>
+              
+              {!videoPrompt ? (
+                <button onClick={generateVideoPrompt} disabled={isGeneratingPrompt} className="w-full bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/30 p-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-50">
+                  {isGeneratingPrompt ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />} 
+                  {isGeneratingPrompt ? "A analisar cena e cinematografia..." : "Extrair Prompt de Vídeo"}
+                </button>
+              ) : (
+                <div className="relative animate-in fade-in zoom-in duration-300">
+                  <textarea 
+                    className="w-full h-32 bg-slate-950 border border-slate-800 focus:border-blue-500/50 rounded-xl p-4 pr-12 text-slate-300 text-sm outline-none resize-none transition-colors mb-2 leading-relaxed"
+                    value={videoPrompt}
+                    readOnly
+                  ></textarea>
+                  <button 
+                    onClick={() => { navigator.clipboard.writeText(videoPrompt); alert('Prompt copiado! Cole no Kling AI, Luma ou Runway.'); }} 
+                    className="absolute top-3 right-3 bg-slate-800 hover:bg-blue-600 text-slate-300 hover:text-white p-2 rounded-lg transition-colors shadow-lg"
+                    title="Copiar Prompt"
+                  >
+                    <Copy size={16} />
+                  </button>
+                  <button onClick={() => setVideoPrompt('')} className="text-xs text-slate-500 hover:text-white font-bold w-full text-center py-1 transition-colors">
+                    Limpar e Gerar Novo Prompt
+                  </button>
+                </div>
+              )}
+            </div>
+
           </div>
 
           {/* PAINEL DIREITO: PREVIEW DO VÍDEO (ESTÚDIO) */}
@@ -533,17 +625,61 @@ function GeneratorPage() {
                   )}
                 </div>
 
-                <div className="relative aspect-[9/16] bg-black rounded-2xl overflow-hidden mx-auto w-full max-w-[320px] shadow-inner mt-4 group">
-                  {/* VÍDEO ORIGINAL MUTADO */}
+                {/* PAINEL DE EDIÇÃO (ZOOM E CAMUFLAGEM) */}
+                {step === 3 && (
+                  <div className="px-4 py-3 bg-slate-950/80 border-b border-slate-800/50 flex flex-col gap-3">
+                    
+                    {/* Zoom Control */}
+                    <div className="flex items-center gap-3">
+                      <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1 w-16">
+                        <Search size={12} /> Cortar:
+                      </span>
+                      <input 
+                        type="range" 
+                        min="1" 
+                        max="1.5" 
+                        step="0.05" 
+                        value={videoZoom} 
+                        onChange={(e) => setVideoZoom(parseFloat(e.target.value))} 
+                        disabled={camouflageMode === 'blur'}
+                        className="flex-1 accent-indigo-500 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer disabled:opacity-50"
+                      />
+                      <span className="text-[10px] text-slate-500 w-8 text-right font-mono">{Math.round(videoZoom * 100)}%</span>
+                    </div>
+
+                    {/* Camouflage Control */}
+                    <div className="flex items-center gap-3">
+                      <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1 w-16">
+                        <Layers size={12} /> Ocultar:
+                      </span>
+                      <div className="flex flex-1 gap-1 bg-slate-900 p-1 rounded-lg border border-slate-800">
+                        <button onClick={() => setCamouflageMode('none')} className={`flex-1 py-1 rounded text-[9px] uppercase tracking-wider font-bold transition-all ${camouflageMode === 'none' ? 'bg-indigo-500 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}>Off</button>
+                        <button onClick={() => setCamouflageMode('glass')} className={`flex-1 py-1 rounded text-[9px] uppercase tracking-wider font-bold transition-all ${camouflageMode === 'glass' ? 'bg-indigo-500 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}>Faixa Central</button>
+                        <button onClick={() => setCamouflageMode('blur')} className={`flex-1 py-1 rounded text-[9px] uppercase tracking-wider font-bold transition-all ${camouflageMode === 'blur' ? 'bg-indigo-500 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}>Cinematic</button>
+                      </div>
+                    </div>
+
+                  </div>
+                )}
+
+                <div className="relative aspect-[9/16] bg-black rounded-2xl overflow-hidden mx-auto w-full max-w-[320px] shadow-inner mt-4 group border border-white/5">
+                  {/* VÍDEO ORIGINAL COM TRATAMENTOS VISUAIS */}
                   <video 
                     ref={videoRef} 
                     src={videoUrl} 
                     muted 
                     playsInline 
                     loop
-                    className="absolute inset-0 w-full h-full object-cover"
+                    className={`absolute inset-0 w-full h-full object-cover transition-all duration-300 origin-center ${camouflageMode === 'blur' ? 'blur-[15px] brightness-50 scale-110' : ''}`}
+                    style={{ transform: camouflageMode !== 'blur' ? `scale(${videoZoom})` : undefined }}
                   />
                   
+                  {/* EFEITO DE FAIXA FOSCA (GLASSMORPHISM) PARA LEGENDA CENTRAL */}
+                  {camouflageMode === 'glass' && (
+                    <div className="absolute top-1/2 -translate-y-1/2 inset-x-0 h-[35%] bg-black/30 backdrop-blur-md z-10 border-y border-white/10 flex items-center justify-center shadow-[0_0_30px_rgba(0,0,0,0.5)]">
+                    </div>
+                  )}
+
                   {/* ÁUDIO GERADO PELA IA */}
                   {generatedAudioUrl && <audio ref={audioRef} src={generatedAudioUrl} onTimeUpdate={handleAudioTimeUpdate} />}
 
@@ -586,7 +722,7 @@ function GeneratorPage() {
 
                   {/* CONTROLES DO PLAYER (Aparecem no hover se estiver tocando) */}
                   {step === 3 && isPlaying && (
-                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/50 backdrop-blur-md border border-white/20 rounded-full px-4 py-2 flex items-center gap-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/50 backdrop-blur-md border border-white/20 rounded-full px-4 py-2 flex items-center gap-4 opacity-0 group-hover:opacity-100 transition-opacity z-30">
                        <button onClick={togglePlayback} className="text-white hover:text-indigo-400 transition-colors">
                           <Pause size={20} fill="currentColor" />
                        </button>
@@ -599,11 +735,19 @@ function GeneratorPage() {
                 {/* BOTÕES DE EXPORTAÇÃO */}
                 {step === 3 && (
                   <div className="mt-6 p-4">
-                    <p className="text-[10px] text-slate-500 text-center mb-3">O preview sincroniza o áudio gerado com o vídeo no navegador. Para exportar, baixe o áudio e junte no seu editor (ex: CapCut).</p>
-                    <a href={generatedAudioUrl} download="AdSniper_Voz_IA.wav" className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm py-3 rounded-xl flex items-center justify-center gap-2 transition-colors border border-slate-700">
-                      <Download size={16} /> Baixar Áudio (.wav)
+                    <p className="text-[10px] text-slate-500 text-center mb-3">
+                       {camouflageMode === 'none' ? `Ajuste no seu editor: Aplique ${Math.round(videoZoom * 100)}% de zoom.` : 
+                        camouflageMode === 'glass' ? `Ajuste no seu editor: Adicione um efeito de desfoque central.` : 
+                        `Ajuste no seu editor: Desfoque o vídeo original a 100%.`}
+                    </p>
+                    <a href={generatedAudioUrl} download="AdSniper_Voz_IA.wav" className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm py-3 rounded-xl flex items-center justify-center gap-2 transition-colors border border-slate-700 mb-2">
+                      <Download size={16} /> Baixar Áudio da Narração (.wav)
                     </a>
-                    <button onClick={() => { setStep(1); setVideoFile(null); setGeneratedAudioUrl(''); setOriginalScript(''); setNewScript(''); }} className="w-full mt-2 text-slate-500 hover:text-white text-xs font-bold py-2 transition-colors">
+                    {/* NOVO BOTÃO DE DOWNLOAD DO VÍDEO ORIGINAL PARA FACILITAR */}
+                    <a href={videoUrl} download="AdSniper_Video_Original.mp4" className="w-full bg-indigo-900/30 hover:bg-indigo-900/50 text-indigo-400 font-bold text-sm py-3 rounded-xl flex items-center justify-center gap-2 transition-colors border border-indigo-500/30">
+                      <Video size={16} /> Baixar Vídeo Original (.mp4)
+                    </a>
+                    <button onClick={() => { setStep(1); setVideoFile(null); setGeneratedAudioUrl(''); setOriginalScript(''); setNewScript(''); setVideoZoom(1); }} className="w-full mt-3 text-slate-500 hover:text-white text-xs font-bold py-2 transition-colors">
                       Criar Novo Vídeo
                     </button>
                   </div>
