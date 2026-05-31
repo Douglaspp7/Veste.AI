@@ -6,7 +6,7 @@ import {
   AlertCircle, Code, ExternalLink, Calendar, ThumbsUp, Layers, Sparkles, Bot,
   Heart, Filter, Video, Bookmark, DollarSign, Clock, CheckCircle, Flame, Library,
   ArrowUpDown, ShieldAlert, SplitSquareHorizontal, Rocket, Trophy, PenTool, Copy,
-  Search, RefreshCw, LayoutTemplate, ArrowRightLeft, MonitorPlay, Check, HelpCircle
+  Search, RefreshCw, LayoutTemplate, ArrowRightLeft, MonitorPlay, Check, HelpCircle, Upload
 } from 'lucide-react';
 
 // ============================================================================
@@ -32,10 +32,10 @@ function SettingsPage({
           </div>
 
           <div className="bg-slate-950 p-5 rounded-xl border border-slate-800">
-            <h3 className="text-lg font-bold text-slate-200 mb-4 flex items-center gap-2"><Sparkles className="text-indigo-500"/> Cérebro IA (Análise)</h3>
+            <h3 className="text-lg font-bold text-slate-200 mb-4 flex items-center gap-2"><Sparkles className="text-indigo-500"/> Cérebro IA (Análise Visual)</h3>
             <select value={aiProvider} onChange={e => setAiProvider(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-white outline-none mb-4">
-                <option value="chatgpt">ChatGPT / OpenAI</option>
-                <option value="gemini">Google Gemini</option>
+                <option value="chatgpt">ChatGPT / OpenAI (GPT-4o Vision)</option>
+                <option value="gemini">Google Gemini (Gemini 1.5 Vision)</option>
             </select>
             <label className="block text-sm font-bold text-slate-400 mb-2 mt-4">Chave de API do {aiProvider === 'chatgpt' ? 'ChatGPT' : 'Gemini'}</label>
             <input type="password" value={aiProvider === 'chatgpt' ? chatGptToken : geminiToken} onChange={e => aiProvider === 'chatgpt' ? setChatGptToken(e.target.value) : setGeminiToken(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-white outline-none mb-2" />
@@ -74,7 +74,6 @@ const VisualLandingPage = ({ data }) => {
 
   return (
     <div className="w-full rounded-xl overflow-hidden border border-slate-700 shadow-2xl flex flex-col h-full bg-slate-900">
-      {/* Falso Cabeçalho de Navegador */}
       <div className="bg-slate-800 px-4 py-3 flex gap-2 items-center border-b border-slate-700 shrink-0">
         <div className="flex gap-2">
           <div className="w-3 h-3 rounded-full bg-rose-500"></div>
@@ -89,16 +88,15 @@ const VisualLandingPage = ({ data }) => {
         </div>
       </div>
 
-      {/* Corpo da Landing Page Gerada */}
       <div className="overflow-y-auto flex-1 custom-scrollbar" style={{ backgroundColor: theme.fundo, color: theme.texto }}>
         {data.blocos.map((bloco, index) => {
           
           if (bloco.tipo === 'header') return (
             <div key={index} className="px-6 py-12 text-center flex flex-col items-center justify-center border-b border-black/5">
-              <h1 className="text-3xl sm:text-4xl font-black mb-4 max-w-3xl leading-tight" style={{ color: theme.destaque }}>
+              <h1 className="text-3xl sm:text-4xl font-black mb-4 max-w-3xl leading-tight mx-auto" style={{ color: theme.destaque }}>
                 {bloco.headline}
               </h1>
-              <p className="text-lg opacity-80 max-w-2xl">
+              <p className="text-lg opacity-80 max-w-2xl mx-auto">
                 {bloco.subheadline}
               </p>
             </div>
@@ -106,7 +104,7 @@ const VisualLandingPage = ({ data }) => {
 
           if (bloco.tipo === 'vsl_section') return (
             <div key={index} className="px-6 py-10 flex flex-col items-center border-b border-black/5 bg-black/5">
-              <p className="mb-6 font-medium text-center">{bloco.texto_apoio}</p>
+              <p className="mb-6 font-medium text-center max-w-2xl">{bloco.texto_apoio}</p>
               
               <div className="w-full max-w-2xl aspect-video bg-black rounded-xl shadow-xl flex flex-col items-center justify-center relative overflow-hidden mb-8 group cursor-pointer border border-white/10">
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent z-10"></div>
@@ -134,7 +132,7 @@ const VisualLandingPage = ({ data }) => {
               <div className="flex-1 w-full relative">
                 <div className="aspect-square bg-slate-200 rounded-2xl flex flex-col items-center justify-center p-6 text-center border-2 border-dashed border-slate-300 relative overflow-hidden">
                   <ImageIcon className="w-12 h-12 text-slate-400 mb-4" />
-                  <p className="text-xs text-slate-500 font-medium mb-2 uppercase tracking-wider">Prompt de Imagem Gerado para IA:</p>
+                  <p className="text-xs text-slate-500 font-medium mb-2 uppercase tracking-wider">Prompt de Imagem para IA:</p>
                   <p className="text-sm text-slate-700 italic select-all bg-white/80 p-3 rounded border border-slate-200">
                     "{bloco.sugestao_imagem_prompt}"
                   </p>
@@ -173,129 +171,138 @@ const VisualLandingPage = ({ data }) => {
 
 function ClonerPage() {
   const [competitorCopy, setCompetitorCopy] = useState('');
+  const [competitorImage, setCompetitorImage] = useState(null); // Guardar Print
   const [newProductName, setNewProductName] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [activeAction, setActiveAction] = useState('');
-  const [aiResult, setAiResult] = useState(''); // Pode ser string ou Object (JSON)
+  const [aiResult, setAiResult] = useState(''); 
   const [errorMsg, setErrorMsg] = useState('');
   const [showProductInput, setShowProductInput] = useState(false);
 
-  // FUNÇÃO DE LIMPEZA DE HTML: Extrai hierarquia visual e texto
-  const parseHTMLToContext = (inputStr) => {
-    // Se não for HTML (ex: colou texto simples), devolvemos como está
-    if (!/<html|<body|<div/i.test(inputStr)) return inputStr;
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        setErrorMsg("A imagem deve ter menos de 5MB.");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setCompetitorImage(reader.result);
+        setErrorMsg('');
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
+  const removeImage = () => {
+    setCompetitorImage(null);
+  };
+
+  const parseHTMLToContext = (inputStr) => {
+    if (!/<html|<body|<div/i.test(inputStr)) return inputStr;
     try {
       const parser = new DOMParser();
       const doc = parser.parseFromString(inputStr, 'text/html');
-
-      // Limpar lixo inútil que consome tokens da IA
       doc.querySelectorAll('script, style, noscript, iframe, svg, path, nav, footer, header').forEach(el => el.remove());
-
-      let extractedData = "ESTRUTURA VISUAL E TEXTOS DA PÁGINA (Análise feita via HTML):\n\n";
-
-      // Função recursiva para ler o DOM mantendo a ordem dos elementos
+      let extractedData = "ESTRUTURA VISUAL E TEXTOS DA PÁGINA:\n\n";
       const walkDOM = (node) => {
         let result = "";
-        if (node.nodeType === 3) { // Text node
+        if (node.nodeType === 3) {
           const text = node.textContent.trim();
           if (text.length > 0) result += text + " ";
-        } else if (node.nodeType === 1) { // Element node
+        } else if (node.nodeType === 1) {
           const tag = node.tagName.toLowerCase();
-          
           if (tag === 'img') {
-            const src = node.getAttribute('src') || '';
-            const alt = node.getAttribute('alt') || 'Sem descrição alternativa';
-            // Marca a imagem para a IA saber que existe contexto visual aqui
-            result += `\n[IMAGEM AQUI: descrição/alt="${alt}"]\n`;
-          } else if (['h1', 'h2', 'h3', 'h4'].includes(tag)) {
-            // Destaca a hierarquia de títulos
+            const alt = node.getAttribute('alt') || 'Imagem sem descrição';
+            result += `\n[IMAGEM: ${alt}]\n`;
+          } else if (['h1', 'h2', 'h3'].includes(tag)) {
             result += `\n\n[TÍTULO PRINCIPAL ${tag.toUpperCase()}]: ${node.textContent.trim()}\n`;
           } else {
-            // Continua a ler os filhos
-            node.childNodes.forEach(child => {
-              result += walkDOM(child);
-            });
+            node.childNodes.forEach(child => { result += walkDOM(child); });
           }
         }
         return result;
       };
-
-      let cleanContent = walkDOM(doc.body).replace(/\s{2,}/g, ' ').trim();
-      return extractedData + cleanContent;
-
-    } catch (error) {
-      console.warn("Falha ao analisar HTML. Enviando texto bruto.", error);
-      return inputStr; // fallback
-    }
+      return extractedData + walkDOM(doc.body).replace(/\s{2,}/g, ' ').trim();
+    } catch (error) { return inputStr; }
   };
 
-  // Função interna para chamar a IA
-  const callAI = async (prompt) => {
+  // Função interna para chamar a IA (AGORA SUPORTA VISÃO)
+  const callAI = async (promptText, imageBase64) => {
     const provider = localStorage.getItem('adsniper_ai_provider') || 'chatgpt';
     const geminiToken = localStorage.getItem('adsniper_gemini_token');
     const chatGptToken = localStorage.getItem('adsniper_gpt_token');
 
-    if (provider === 'gemini' && !geminiToken) {
-      throw new Error("Chave da API do Google Gemini não encontrada. Vá ao separador Configurações.");
-    }
-    if (provider === 'chatgpt' && !chatGptToken) {
-      throw new Error("Chave da API da OpenAI (ChatGPT) não encontrada. Vá ao separador Configurações.");
-    }
+    if (provider === 'gemini' && !geminiToken) throw new Error("Chave da API do Google Gemini não encontrada.");
+    if (provider === 'chatgpt' && !chatGptToken) throw new Error("Chave da API da OpenAI (ChatGPT) não encontrada.");
 
     if (provider === 'chatgpt') {
+      const messages = [
+        { role: 'system', content: 'É um Engenheiro de Funis especialista em CRO, Copywriting e Design Web. Você sabe analisar estruturas e cores.' }
+      ];
+
+      // Se houver imagem, montamos o payload Vision
+      if (imageBase64) {
+        messages.push({
+          role: 'user',
+          content: [
+            { type: "text", text: promptText },
+            { type: "image_url", image_url: { url: imageBase64 } }
+          ]
+        });
+      } else {
+        messages.push({ role: 'user', content: promptText });
+      }
+
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${chatGptToken}` },
           body: JSON.stringify({
-              model: 'gpt-4o-mini', 
-              messages: [
-                  { role: 'system', content: 'É um Engenheiro de Funis e Copywriter de Elite. Seja direto, agressivo em vendas e focado em conversão.' },
-                  { role: 'user', content: prompt }
-              ],
+              model: 'gpt-4o', // Obrigatório ser GPT-4o para visão
+              messages: messages,
               temperature: 0.7
           })
       });
       if (!response.ok) {
           const err = await response.json().catch(() => ({}));
-          if (response.status === 429 || err.error?.type === 'insufficient_quota') throw new Error("Saldo esgotado na OpenAI (ChatGPT). Por favor adicione fundos na plataforma da OpenAI.");
           throw new Error(err.error?.message || "Erro de ligação à OpenAI");
       }
       const data = await response.json();
       return data.choices[0].message.content;
     } 
     
-    // Se for Gemini
     if (provider === 'gemini') {
-      let modelOptions = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-pro"];
-      // Fallback preview model in isolated environments
-      if (geminiToken === "") { modelOptions = ["gemini-2.5-flash-preview-09-2025"]; }
-
-      for(let model of modelOptions) {
-        try {
-          const endpointUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiToken}`;
-          const response = await fetch(endpointUrl, {
-              method: 'POST', 
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-          });
-          if (!response.ok) {
-              if(response.status === 404) continue;
-              const errData = await response.json().catch(() => ({}));
-              throw new Error(errData.error?.message || `Erro na Google Gemini`);
-          }
-          const data = await response.json();
-          return data.candidates?.[0]?.content?.parts?.[0]?.text || "Resposta vazia da IA.";
-        } catch(e) {
-           if(model === modelOptions[modelOptions.length -1]) throw e;
-        }
+      const model = "gemini-1.5-flash";
+      const endpointUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiToken}`;
+      
+      let parts = [{ text: promptText }];
+      
+      if (imageBase64) {
+        const mimeType = imageBase64.split(';')[0].split(':')[1];
+        const base64Data = imageBase64.split(',')[1];
+        parts.push({
+          inlineData: { mimeType: mimeType, data: base64Data }
+        });
       }
+
+      const response = await fetch(endpointUrl, {
+          method: 'POST', 
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: parts }] })
+      });
+      if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.error?.message || `Erro na Google Gemini`);
+      }
+      const data = await response.json();
+      return data.candidates?.[0]?.content?.parts?.[0]?.text || "Resposta vazia da IA.";
     }
   };
 
   const handleAction = async (actionType) => {
-    if (!competitorCopy.trim()) {
-      setErrorMsg("Por favor, cole a copy ou o Código HTML da página de vendas do seu concorrente primeiro.");
+    if (!competitorCopy.trim() && !competitorImage) {
+      setErrorMsg("Por favor, cole o texto/HTML ou faça o upload de um print da página do concorrente.");
       return;
     }
 
@@ -309,53 +316,50 @@ function ClonerPage() {
     setActiveAction(actionType);
     setAiResult('');
 
-    // Prepara os dados antes de mandar para a IA (Converte HTML em Esqueleto limpo se for o caso)
-    const parsedContext = parseHTMLToContext(competitorCopy);
-
+    const parsedContext = competitorCopy ? parseHTMLToContext(competitorCopy) : "Página fornecida via Imagem/Print em anexo.";
     let prompt = '';
 
     switch (actionType) {
       case 'analyze':
-        prompt = `Atue como um Especialista em CRO (Otimização de Conversão) e Copywriting. Analise a estrutura desta página de vendas concorrente (o texto inclui tags de marcação de imagens e hierarquia visual). 
-        Destaque de forma clara: 
-        1. O que está forte nesta estrutura e uso de imagens (Gatilhos mentais bem usados). 
-        2. Falhas e oportunidades de melhoria que o anunciante deixou na mesa. 
-        3. Sugestões de novos ângulos de vendas para EU usar e ganhar deles. 
-        Dados Analisados: "${parsedContext}"`;
+        prompt = `Atue como um Especialista em CRO e Copywriting. Analise a estrutura desta página de vendas concorrente. 
+        Se foi enviada uma imagem, analise as cores, os botões, os blocos visuais e o texto visível.
+        Destaque: 
+        1. O que está forte nesta estrutura e uso de imagens/design. 
+        2. Falhas e oportunidades de melhoria. 
+        3. Sugestões de novos ângulos de vendas. 
+        Dados: "${parsedContext}"`;
         break;
       
       case 'spin':
-        prompt = `Atue como um Copywriter de Elite. Reescreva a seguinte copy de vendas para ser 100% original (anti-plágio) aos olhos do Google e Facebook, mas mantenha a mesma força persuasiva, estrutura de promessa e gatilhos mentais. Faça um 'Spin' inteligente.
-        Dados Originais: "${parsedContext}"`;
+        prompt = `Atue como um Copywriter de Elite. Leia a página anexada (via imagem ou texto) e reescreva toda a copy de vendas para ser 100% original, mas mantenha a mesma força persuasiva. Faça um 'Spin' inteligente.
+        Dados: "${parsedContext}"`;
         break;
 
       case 'wireframe':
-        prompt = `Atue como um Web Designer de Alta Conversão. Leia este mapeamento da página concorrente e crie um 'Esqueleto' (Wireframe) detalhado de como a Landing Page deve ser montada visualmente no WordPress/Elementor. Note que extraí marcações de [IMAGEM] e [TÍTULOS]. 
-        Liste os blocos em ordem lógica de vendas (ex: Bloco 1: Headline e Vídeo de Vendas. Bloco 2: Benefícios com Ícones...). 
+        prompt = `Atue como Web Designer. Leia esta página mapeada e crie um 'Esqueleto' (Wireframe) detalhado de como ela deve ser montada no WordPress.
+        Se foi enviada uma imagem, mapeie os blocos exatamente na ordem que aparecem visualmente (ex: Bloco 1: Fundo preto, Texto branco, Botão Verde...). 
         Base de Dados: "${parsedContext}"`;
         break;
 
       case 'adapt':
-        // PROMPT ATUALIZADO PARA GERAR JSON E EVITAR PLÁGIO
-        prompt = `Atue como um Engenheiro de Funis e Web Designer especialista em CRO.
-        Vou passar-lhe a estrutura extraída (textos e imagens mapeadas) de uma página de vendas de sucesso. 
+        prompt = `Atue como Engenheiro de Funis e Web Designer. Analise a Landing Page concorrente anexada (seja por imagem ou texto/HTML). 
+        A sua tarefa é fazer a engenharia reversa visual e textual para recriar uma Landing Page INTEIRA, do zero, para um NOVO produto chamado '${newProductName}'.
+        
+        Se você estiver vendo a imagem da página, EXTRAIA o esquema de cores original, e tente extrair a estrutura exata do funil, mas mudando toda a Copy para o novo produto.
 
-        A sua tarefa é fazer a engenharia reversa dos gatilhos mentais e recriar uma Landing Page INTEIRA, do zero, para um NOVO produto chamado '${newProductName}'.
-        Para garantir 0% de plágio, MUDE O FRAMEWORK de persuasão. Crie novos benefícios lógicos, um tom de venda único, e sugira que imagens devem ser usadas nos lugares das antigas.
-
-        Regra CRÍTICA: Você DEVE retornar APENAS um objeto JSON válido. Não adicione texto antes ou depois do JSON. 
-        Use este formato exato:
+        Regra CRÍTICA: Retorne APENAS um objeto JSON válido.
+        Formato exato:
         {
-          "paleta_cores": { "fundo": "#f8fafc", "texto": "#0f172a", "destaque": "#4f46e5", "botao": "#10b981", "texto_botao": "#ffffff" },
+          "paleta_cores": { "fundo": "#...", "texto": "#...", "destaque": "#...", "botao": "#...", "texto_botao": "#..." },
           "blocos": [
-            { "tipo": "header", "headline": "A nova super promessa focada na transformação", "subheadline": "O subtítulo de apoio que quebra a principal objeção" },
-            { "tipo": "vsl_section", "texto_apoio": "Ligue o som do seu dispositivo e veja como isto funciona na prática", "botao_cta": "QUERO ACESSO IMEDIATO AGORA" },
-            { "tipo": "beneficios", "titulo": "Porquê escolher o nosso método?", "itens": ["Benefício forte 1", "Benefício tangível 2", "Vantagem exclusiva 3"], "sugestao_imagem_prompt": "Prompt em inglês para gerar no Midjourney a imagem que vai acompanhar os benefícios (ex: cinematic photography of a professional business person...)" },
-            { "tipo": "faq", "perguntas": [{"q": "Como recebo o acesso?", "a": "Imediatamente após a compra."}, {"q": "Tem garantia?", "a": "Sim, 7 dias de garantia incondicional."}] }
+            { "tipo": "header", "headline": "...", "subheadline": "..." },
+            { "tipo": "vsl_section", "texto_apoio": "...", "botao_cta": "..." },
+            { "tipo": "beneficios", "titulo": "...", "itens": ["...", "..."], "sugestao_imagem_prompt": "Prompt Midjourney em ingles..." },
+            { "tipo": "faq", "perguntas": [{"q": "...", "a": "..."}] }
           ]
         }
 
-        Dados da Página Original (Produto Antigo): "${parsedContext}"`;
+        Dados Base (Concorrente): "${parsedContext}"`;
         break;
 
       default:
@@ -363,31 +367,25 @@ function ClonerPage() {
     }
 
     try {
-      const result = await callAI(prompt);
+      // Passamos a imagem em base64 se existir
+      const result = await callAI(prompt, competitorImage);
 
-      // Tratamento especial para o 'adapt' que deve ser um JSON
       if (actionType === 'adapt') {
         try {
           let jsonStr = result;
-          // Limpeza do markdown ```json caso a IA envie
-          if (jsonStr.includes('```json')) {
-            jsonStr = jsonStr.split('```json')[1].split('```')[0];
-          } else if (jsonStr.includes('```')) {
-            jsonStr = jsonStr.split('```')[1].split('```')[0];
-          }
+          if (jsonStr.includes('```json')) jsonStr = jsonStr.split('```json')[1].split('```')[0];
+          else if (jsonStr.includes('```')) jsonStr = jsonStr.split('```')[1].split('```')[0];
           
           const parsedObj = JSON.parse(jsonStr.trim());
-          setAiResult(parsedObj); // Guardamos o objeto JSON no estado
+          setAiResult(parsedObj);
           setShowProductInput(false);
         } catch (jsonError) {
-          console.error("Falha ao analisar JSON da IA:", result);
-          setErrorMsg("A IA não retornou um formato visual válido. Vamos mostrar o formato em texto. Tente gerar novamente.");
-          setAiResult(result); // Fallback para texto bruto
+          setErrorMsg("A IA não retornou um formato visual válido. Mostrando texto bruto.");
+          setAiResult(result);
         }
       } else {
-        setAiResult(result); // Outras ações devolvem texto normal
+        setAiResult(result);
       }
-
     } catch (err) {
       setErrorMsg(err.message);
     } finally {
@@ -405,8 +403,8 @@ function ClonerPage() {
           <Copy className="w-7 h-7 text-fuchsia-400" />
         </div>
         <div>
-          <h2 className="text-3xl font-bold text-white tracking-tight">Engenheiro de Funis <span className="text-fuchsia-500">IA</span></h2>
-          <p className="text-slate-400 mt-1">Esmague a concorrência fazendo a engenharia reversa das páginas de maior conversão.</p>
+          <h2 className="text-3xl font-bold text-white tracking-tight">Engenheiro de Funis <span className="text-fuchsia-500">IA Vision</span></h2>
+          <p className="text-slate-400 mt-1">Faça upload do print de uma página blindada. A IA "Lê" a imagem e clona a estrutura.</p>
         </div>
       </div>
 
@@ -419,20 +417,45 @@ function ClonerPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 flex-1 min-h-[600px] h-full pb-8">
         <div className="lg:col-span-4 flex flex-col gap-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg flex-1 flex flex-col min-h-[300px]">
-            <label className="text-sm font-bold text-slate-400 mb-3 flex items-center gap-2 uppercase tracking-wider">
-              <Code size={16} className="text-fuchsia-500" /> 1. Código HTML ou Texto base
+          
+          {/* PAINEL DE INSERÇÃO DE DADOS (TEXTO OU IMAGEM) */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg flex flex-col h-auto">
+            <label className="text-sm font-bold text-slate-400 mb-3 flex items-center justify-between uppercase tracking-wider">
+              <span className="flex items-center gap-2"><Code size={16} className="text-fuchsia-500" /> 1. Alimentar a IA</span>
             </label>
-            <textarea 
-              className="w-full flex-1 bg-slate-950 border border-slate-800 focus:border-fuchsia-500/50 rounded-xl p-4 text-slate-300 text-sm outline-none resize-none transition-colors shadow-inner"
-              placeholder="Vá à página do concorrente, pressione Ctrl+U (Ver Código-Fonte), selecione tudo (Ctrl+A), copie e cole aqui..."
-              value={competitorCopy}
-              onChange={(e) => setCompetitorCopy(e.target.value)}
-            ></textarea>
-            <p className="text-[10px] text-slate-500 mt-2 flex items-start gap-1">
-              <Sparkles size={12} className="shrink-0 text-fuchsia-500/50" /> 
-              O sistema extrairá as imagens e a hierarquia do HTML para uma precisão cirúrgica na criação do novo design.
-            </p>
+
+            {!competitorImage ? (
+              <div className="flex flex-col gap-3">
+                <textarea 
+                  className="w-full h-32 bg-slate-950 border border-slate-800 focus:border-fuchsia-500/50 rounded-xl p-4 text-slate-300 text-sm outline-none resize-none transition-colors"
+                  placeholder="Cole o Código HTML (Ctrl+U) ou o texto da página aqui..."
+                  value={competitorCopy}
+                  onChange={(e) => setCompetitorCopy(e.target.value)}
+                ></textarea>
+                
+                <div className="flex items-center gap-4 py-2">
+                  <div className="flex-1 h-px bg-slate-800"></div>
+                  <span className="text-xs font-bold text-slate-600 uppercase">Ou use IA Visão</span>
+                  <div className="flex-1 h-px bg-slate-800"></div>
+                </div>
+
+                <div className="relative border-2 border-dashed border-slate-700 hover:border-fuchsia-500/50 rounded-xl p-6 text-center transition-colors bg-slate-950 cursor-pointer group">
+                  <input type="file" accept="image/*" onChange={handleImageUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+                  <Upload className="w-8 h-8 text-slate-500 group-hover:text-fuchsia-400 mx-auto mb-2 transition-colors" />
+                  <p className="text-sm font-bold text-slate-300">Faça Upload de um Print (Screenshot)</p>
+                  <p className="text-[10px] text-slate-500 mt-1">A página está bloqueada? Tire um print e envie. A IA vai "ler" a imagem.</p>
+                </div>
+              </div>
+            ) : (
+              <div className="relative rounded-xl overflow-hidden border border-fuchsia-500/30 group">
+                <img src={competitorImage} alt="Print Concorrente" className="w-full h-48 object-cover opacity-80" />
+                <div className="absolute inset-0 bg-slate-950/80 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <CheckCircle className="w-8 h-8 text-fuchsia-400 mb-2" />
+                  <span className="text-sm font-bold text-white">Imagem Carregada Pronta</span>
+                  <button onClick={removeImage} className="mt-3 bg-red-600/20 text-red-400 hover:bg-red-600 hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold border border-red-500/30 z-20">Remover Imagem</button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg">
@@ -447,7 +470,7 @@ function ClonerPage() {
                 className="bg-slate-950 hover:bg-indigo-600/20 text-slate-300 hover:text-indigo-300 hover:border-indigo-500/50 border border-slate-800 p-4 rounded-xl flex flex-col items-center justify-center gap-2 transition-all disabled:opacity-50 group"
               >
                 {isProcessing && activeAction === 'analyze' ? <Loader2 className="w-6 h-6 animate-spin text-indigo-400" /> : <Search className="w-6 h-6 text-slate-500 group-hover:text-indigo-400 transition-colors" />}
-                <span className="font-bold text-sm">Analisar Estratégia</span>
+                <span className="font-bold text-sm">Analisar Visual</span>
               </button>
 
               <button 
@@ -471,7 +494,7 @@ function ClonerPage() {
               <button 
                 onClick={() => handleAction('adapt')}
                 disabled={isProcessing}
-                className="bg-slate-950 hover:bg-fuchsia-600/20 text-slate-300 hover:text-fuchsia-300 hover:border-fuchsia-500/50 border border-slate-800 p-4 rounded-xl flex flex-col items-center justify-center gap-2 transition-all disabled:opacity-50 group border-fuchsia-500/30"
+                className="bg-slate-950 hover:bg-fuchsia-600/20 text-slate-300 hover:text-fuchsia-300 hover:border-fuchsia-500/50 border border-slate-800 p-4 rounded-xl flex flex-col items-center justify-center gap-2 transition-all disabled:opacity-50 group border-fuchsia-500/30 shadow-[0_0_15px_rgba(217,70,239,0.1)]"
               >
                 {isProcessing && activeAction === 'adapt' ? <Loader2 className="w-6 h-6 animate-spin text-fuchsia-400" /> : <ArrowRightLeft className="w-6 h-6 text-fuchsia-400 transition-colors" />}
                 <span className="font-bold text-sm text-center text-fuchsia-400">Criar Novo Funil</span>
@@ -528,16 +551,14 @@ function ClonerPage() {
             {isProcessing ? (
                <div className="h-full flex flex-col items-center justify-center text-fuchsia-400/80 animate-pulse">
                   <Loader2 className="w-12 h-12 animate-spin mb-4" />
-                  <p className="font-bold text-lg">A IA está a dissecar o HTML e a construir a página visual...</p>
+                  <p className="font-bold text-lg">A IA Vision está a analisar a página e a criar o design...</p>
                   <p className="text-sm text-fuchsia-400/50 mt-2">Isto pode demorar cerca de 10 a 20 segundos.</p>
                </div>
             ) : isAiResultObject ? (
-               // RENDERIZAR LANDING PAGE VISUAL AQUI
                <div className="h-full p-2 bg-slate-950">
                   <VisualLandingPage data={aiResult} />
                </div>
             ) : aiResult ? (
-               // RENDERIZAR TEXTO BRUTO DAS OUTRAS AÇÕES
                <div className="h-full p-6 overflow-y-auto custom-scrollbar">
                   <div className="text-slate-300 text-sm leading-relaxed whitespace-pre-wrap font-medium">
                     {typeof aiResult === 'string' ? aiResult.split('**').map((chunk, index) => 
@@ -546,11 +567,12 @@ function ClonerPage() {
                   </div>
                </div>
             ) : (
-               <div className="h-full flex flex-col items-center justify-center text-slate-600">
+               <div className="h-full flex flex-col items-center justify-center text-slate-600 p-8 text-center">
                   <LayoutTemplate className="w-16 h-16 mb-4 opacity-20" />
-                  <p className="text-center max-w-sm">
-                    Cole o código HTML da página à esquerda e clique em <strong className="text-fuchsia-500">"Criar Novo Funil"</strong> para gerar uma Landing Page visual 100% à prova de plágio.
+                  <p className="max-w-md mb-2">
+                    Cole o código à esquerda, <strong className="text-white">OU faça o upload de um print (screenshot)</strong> da página bloqueada do concorrente.
                   </p>
+                  <p className="text-xs text-slate-500">A Inteligência Artificial "Visão" vai ler a imagem como se fosse um ser humano e recriar o funil adaptado para o seu produto.</p>
                </div>
             )}
           </div>
@@ -708,7 +730,7 @@ export default function App() {
 
   const callChatGPT = async (prompt, token) => {
     if (!token) throw new Error("Chave da OpenAI (ChatGPT) não configurada.");
-    const response = await fetch('[https://api.openai.com/v1/chat/completions](https://api.openai.com/v1/chat/completions)', {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify({
