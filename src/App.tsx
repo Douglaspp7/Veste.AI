@@ -6,7 +6,7 @@ import {
   AlertCircle, Code, ExternalLink, Calendar, ThumbsUp, Layers, Sparkles, Bot,
   Heart, Filter, Video, Bookmark, DollarSign, Clock, CheckCircle, Flame, Library,
   ArrowUpDown, ShieldAlert, SplitSquareHorizontal, Rocket, Trophy, PenTool, Copy,
-  Search, RefreshCw, LayoutTemplate, ArrowRightLeft
+  Search, RefreshCw, LayoutTemplate, ArrowRightLeft, MonitorPlay, Check, HelpCircle
 } from 'lucide-react';
 
 // ============================================================================
@@ -55,7 +55,7 @@ function GeneratorPage() {
       </div>
       <h2 className="text-3xl font-bold text-white mb-4">Gerador de Criativos IA</h2>
       <p className="text-slate-400 max-w-xl mx-auto text-lg leading-relaxed mb-8">
-        O seu laboratório de alta conversão. Em breve, a IA irá pegar nas copys que você encontrou no Radar e transformá-las em roteiros de vídeo virais (VSL/TikTok), criar imagens dinâmicas e desenhar carrosséis persuasivos.
+        O seu laboratório de alta conversão. Em breve, a IA irá pegar nas copys que encontrou no Radar e transformá-las em guiões de vídeo virais (VSL/TikTok), criar imagens dinâmicas e desenhar carrosséis persuasivos.
       </p>
       <button disabled className="bg-indigo-600/50 text-indigo-200 border border-indigo-500/30 px-8 py-3 rounded-xl font-bold flex items-center gap-2 cursor-not-allowed">
         <Loader2 className="w-5 h-5 animate-spin" /> Em Desenvolvimento...
@@ -64,12 +64,119 @@ function GeneratorPage() {
   );
 }
 
+// NOVO COMPONENTE: Visualizador de Landing Page Gerada
+const VisualLandingPage = ({ data }) => {
+  if (!data || !data.blocos) return null;
+  
+  const theme = data.paleta_cores || {
+    fundo: "#ffffff", texto: "#1e293b", destaque: "#4f46e5", botao: "#10b981", texto_botao: "#ffffff"
+  };
+
+  return (
+    <div className="w-full rounded-xl overflow-hidden border border-slate-700 shadow-2xl flex flex-col h-full bg-slate-900">
+      {/* Falso Cabeçalho de Navegador */}
+      <div className="bg-slate-800 px-4 py-3 flex gap-2 items-center border-b border-slate-700 shrink-0">
+        <div className="flex gap-2">
+          <div className="w-3 h-3 rounded-full bg-rose-500"></div>
+          <div className="w-3 h-3 rounded-full bg-amber-500"></div>
+          <div className="w-3 h-3 rounded-full bg-emerald-500"></div>
+        </div>
+        <div className="ml-4 flex-1">
+          <div className="bg-slate-900 rounded text-xs text-slate-400 px-3 py-1 flex items-center gap-2 w-full max-w-sm mx-auto">
+            <Lock size={12} className="text-emerald-500" />
+            [https://oseunovofunil.com](https://oseunovofunil.com)
+          </div>
+        </div>
+      </div>
+
+      {/* Corpo da Landing Page Gerada */}
+      <div className="overflow-y-auto flex-1 custom-scrollbar" style={{ backgroundColor: theme.fundo, color: theme.texto }}>
+        {data.blocos.map((bloco, index) => {
+          
+          if (bloco.tipo === 'header') return (
+            <div key={index} className="px-6 py-12 text-center flex flex-col items-center justify-center border-b border-black/5">
+              <h1 className="text-3xl sm:text-4xl font-black mb-4 max-w-3xl leading-tight" style={{ color: theme.destaque }}>
+                {bloco.headline}
+              </h1>
+              <p className="text-lg opacity-80 max-w-2xl">
+                {bloco.subheadline}
+              </p>
+            </div>
+          );
+
+          if (bloco.tipo === 'vsl_section') return (
+            <div key={index} className="px-6 py-10 flex flex-col items-center border-b border-black/5 bg-black/5">
+              <p className="mb-6 font-medium text-center">{bloco.texto_apoio}</p>
+              
+              <div className="w-full max-w-2xl aspect-video bg-black rounded-xl shadow-xl flex flex-col items-center justify-center relative overflow-hidden mb-8 group cursor-pointer border border-white/10">
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent z-10"></div>
+                <MonitorPlay className="w-16 h-16 text-white/80 z-20 group-hover:scale-110 transition-transform duration-300" />
+                <span className="text-white/60 text-sm z-20 mt-4">[ Espaço para o seu Vídeo VSL ]</span>
+              </div>
+
+              <button className="px-8 py-4 rounded-xl font-black text-lg sm:text-xl shadow-lg transition-transform hover:scale-105 hover:shadow-xl w-full max-w-md uppercase tracking-wide" style={{ backgroundColor: theme.botao, color: theme.texto_botao, textShadow: '0 1px 2px rgba(0,0,0,0.2)' }}>
+                {bloco.botao_cta}
+              </button>
+            </div>
+          );
+
+          if (bloco.tipo === 'beneficios') return (
+            <div key={index} className="px-6 py-12 flex flex-col md:flex-row gap-8 items-center max-w-5xl mx-auto">
+              <div className="flex-1 space-y-4 w-full">
+                {bloco.titulo && <h2 className="text-2xl font-bold mb-6" style={{ color: theme.destaque }}>{bloco.titulo}</h2>}
+                {bloco.itens.map((item, i) => (
+                  <div key={i} className="flex items-start gap-3 bg-white/50 p-4 rounded-lg shadow-sm border border-black/5">
+                    <Check className="shrink-0 mt-1" style={{ color: theme.botao }} size={20} />
+                    <span className="font-medium leading-relaxed">{item}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex-1 w-full relative">
+                <div className="aspect-square bg-slate-200 rounded-2xl flex flex-col items-center justify-center p-6 text-center border-2 border-dashed border-slate-300 relative overflow-hidden">
+                  <ImageIcon className="w-12 h-12 text-slate-400 mb-4" />
+                  <p className="text-xs text-slate-500 font-medium mb-2 uppercase tracking-wider">Prompt de Imagem Gerado para IA:</p>
+                  <p className="text-sm text-slate-700 italic select-all bg-white/80 p-3 rounded border border-slate-200">
+                    "{bloco.sugestao_imagem_prompt}"
+                  </p>
+                </div>
+              </div>
+            </div>
+          );
+
+          if (bloco.tipo === 'faq') return (
+            <div key={index} className="px-6 py-12 bg-black/5 border-t border-black/5">
+              <div className="max-w-3xl mx-auto">
+                <h2 className="text-2xl font-black text-center mb-8 flex items-center justify-center gap-2" style={{ color: theme.destaque }}>
+                  <HelpCircle /> Perguntas Frequentes
+                </h2>
+                <div className="space-y-4">
+                  {bloco.perguntas.map((faq, i) => (
+                    <div key={i} className="bg-white/80 p-5 rounded-xl shadow-sm border border-black/5">
+                      <h4 className="font-bold mb-2 flex items-center gap-2">
+                        <span style={{ color: theme.destaque }}>Q:</span> {faq.q}
+                      </h4>
+                      <p className="opacity-80 text-sm leading-relaxed ml-6">{faq.a}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          );
+
+          return null;
+        })}
+      </div>
+    </div>
+  );
+};
+
+
 function ClonerPage() {
   const [competitorCopy, setCompetitorCopy] = useState('');
   const [newProductName, setNewProductName] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [activeAction, setActiveAction] = useState('');
-  const [aiResult, setAiResult] = useState('');
+  const [aiResult, setAiResult] = useState(''); // Pode ser string ou Object (JSON)
   const [errorMsg, setErrorMsg] = useState('');
   const [showProductInput, setShowProductInput] = useState(false);
 
@@ -80,20 +187,20 @@ function ClonerPage() {
     const chatGptToken = localStorage.getItem('adsniper_gpt_token');
 
     if (provider === 'gemini' && !geminiToken) {
-      throw new Error("Chave da API do Google Gemini não encontrada. Vá à aba Configurações.");
+      throw new Error("Chave da API do Google Gemini não encontrada. Vá ao separador Configurações.");
     }
     if (provider === 'chatgpt' && !chatGptToken) {
-      throw new Error("Chave da API da OpenAI (ChatGPT) não encontrada. Vá à aba Configurações.");
+      throw new Error("Chave da API da OpenAI (ChatGPT) não encontrada. Vá ao separador Configurações.");
     }
 
     if (provider === 'chatgpt') {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      const response = await fetch('[https://api.openai.com/v1/chat/completions](https://api.openai.com/v1/chat/completions)', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${chatGptToken}` },
           body: JSON.stringify({
               model: 'gpt-4o-mini', 
               messages: [
-                  { role: 'system', content: 'Você é um Engenheiro de Funis e Copywriter de Elite. Seja direto, agressivo em vendas e extremamente focado em conversão.' },
+                  { role: 'system', content: 'É um Engenheiro de Funis e Copywriter de Elite. Seja direto, agressivo em vendas e focado em conversão.' },
                   { role: 'user', content: prompt }
               ],
               temperature: 0.7
@@ -110,19 +217,29 @@ function ClonerPage() {
     
     // Se for Gemini
     if (provider === 'gemini') {
-      const model = "gemini-1.5-flash";
-      const endpointUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiToken}`;
-      const response = await fetch(endpointUrl, {
-          method: 'POST', 
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-      });
-      if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          throw new Error(errData.error?.message || `Erro na Google Gemini`);
+      let modelOptions = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-pro"];
+      // Fallback preview model in isolated environments
+      if (geminiToken === "") { modelOptions = ["gemini-2.5-flash-preview-09-2025"]; }
+
+      for(let model of modelOptions) {
+        try {
+          const endpointUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiToken}`;
+          const response = await fetch(endpointUrl, {
+              method: 'POST', 
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+          });
+          if (!response.ok) {
+              if(response.status === 404) continue;
+              const errData = await response.json().catch(() => ({}));
+              throw new Error(errData.error?.message || `Erro na Google Gemini`);
+          }
+          const data = await response.json();
+          return data.candidates?.[0]?.content?.parts?.[0]?.text || "Resposta vazia da IA.";
+        } catch(e) {
+           if(model === modelOptions[modelOptions.length -1]) throw e;
+        }
       }
-      const data = await response.json();
-      return data.candidates?.[0]?.content?.parts?.[0]?.text || "Resposta vazia da IA.";
     }
   };
 
@@ -166,9 +283,26 @@ function ClonerPage() {
         break;
 
       case 'adapt':
-        prompt = `Atue como um Copywriter Mestre. Eu encontrei um funil vencedor de um concorrente e quero "roubar" a estrutura de persuasão dele, mas adaptar para o meu NOVO produto chamado '${newProductName}'. 
-        Reescreva a copy inteira focando nos benefícios do meu produto (invente benefícios lógicos se necessário), mas mantendo o tom agressivo de vendas, os gatilhos e a arquitetura da página original. 
-        Copy do Concorrente (Produto antigo): "${competitorCopy}"`;
+        // PROMPT ATUALIZADO PARA GERAR JSON E EVITAR PLÁGIO
+        prompt = `Atue como um Engenheiro de Funis e Web Designer especialista em CRO.
+        Vou passar-lhe a copy de uma página de vendas de sucesso. 
+
+        A sua tarefa é fazer a engenharia reversa dos gatilhos mentais e recriar uma Landing Page INTEIRA, do zero, para um NOVO produto chamado '${newProductName}'.
+        Para garantir 0% de plágio, MUDE O FRAMEWORK de persuasão (ex: se o original foca na 'Dor', foque na 'Transformação/Desejo', ou mude a estrutura lógica do funil). Crie novos benefícios lógicos e um tom de venda único.
+
+        Regra CRÍTICA: Você DEVE retornar APENAS um objeto JSON válido. Não adicione texto antes ou depois do JSON. 
+        Use este formato exato:
+        {
+          "paleta_cores": { "fundo": "#f8fafc", "texto": "#0f172a", "destaque": "#4f46e5", "botao": "#10b981", "texto_botao": "#ffffff" },
+          "blocos": [
+            { "tipo": "header", "headline": "A nova super promessa focada na transformação", "subheadline": "O subtítulo de apoio que quebra a principal objeção" },
+            { "tipo": "vsl_section", "texto_apoio": "Ligue o som do seu dispositivo e veja como isto funciona na prática", "botao_cta": "QUERO ACESSO IMEDIATO AGORA" },
+            { "tipo": "beneficios", "titulo": "Porquê escolher o nosso método?", "itens": ["Benefício forte 1", "Benefício tangível 2", "Vantagem exclusiva 3"], "sugestao_imagem_prompt": "Prompt em inglês para Midjourney (ex: cinematic photography of a professional business person...)" },
+            { "tipo": "faq", "perguntas": [{"q": "Como recebo o acesso?", "a": "Imediatamente após a compra."}, {"q": "Tem garantia?", "a": "Sim, 7 dias de garantia incondicional."}] }
+          ]
+        }
+
+        Copy Original do Concorrente (Produto Antigo): "${competitorCopy}"`;
         break;
 
       default:
@@ -177,8 +311,30 @@ function ClonerPage() {
 
     try {
       const result = await callAI(prompt);
-      setAiResult(result);
-      if (actionType === 'adapt') setShowProductInput(false);
+
+      // Tratamento especial para o 'adapt' que deve ser um JSON
+      if (actionType === 'adapt') {
+        try {
+          let jsonStr = result;
+          // Limpeza do markdown ```json caso a IA envie
+          if (jsonStr.includes('```json')) {
+            jsonStr = jsonStr.split('```json')[1].split('```')[0];
+          } else if (jsonStr.includes('```')) {
+            jsonStr = jsonStr.split('```')[1].split('```')[0];
+          }
+          
+          const parsedObj = JSON.parse(jsonStr.trim());
+          setAiResult(parsedObj); // Guardamos o objeto JSON no estado
+          setShowProductInput(false);
+        } catch (jsonError) {
+          console.error("Falha ao analisar JSON da IA:", result);
+          setErrorMsg("A IA não retornou um formato visual válido. Vamos mostrar o formato em texto. Tente gerar novamente.");
+          setAiResult(result); // Fallback para texto bruto
+        }
+      } else {
+        setAiResult(result); // Outras ações devolvem texto normal
+      }
+
     } catch (err) {
       setErrorMsg(err.message);
     } finally {
@@ -186,6 +342,8 @@ function ClonerPage() {
       setActiveAction('');
     }
   };
+
+  const isAiResultObject = typeof aiResult === 'object' && aiResult !== null;
 
   return (
     <div className="max-w-7xl mx-auto py-8 px-4 md:px-8 h-full flex flex-col">
@@ -195,7 +353,7 @@ function ClonerPage() {
         </div>
         <div>
           <h2 className="text-3xl font-bold text-white tracking-tight">Engenheiro de Funis <span className="text-fuchsia-500">IA</span></h2>
-          <p className="text-slate-400 mt-1">Esmague a concorrência fazendo a engenharia reversa das páginas de maior conversão do mercado.</p>
+          <p className="text-slate-400 mt-1">Esmague a concorrência fazendo a engenharia reversa das páginas de maior conversão.</p>
         </div>
       </div>
 
@@ -206,15 +364,15 @@ function ClonerPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 flex-1 min-h-[600px]">
-        <div className="lg:col-span-5 flex flex-col gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 flex-1 min-h-[600px] h-full pb-8">
+        <div className="lg:col-span-4 flex flex-col gap-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg flex-1 flex flex-col min-h-[300px]">
             <label className="text-sm font-bold text-slate-400 mb-3 flex items-center gap-2 uppercase tracking-wider">
               <Code size={16} className="text-fuchsia-500" /> 1. Cole a Estrutura do Concorrente
             </label>
             <textarea 
               className="w-full flex-1 bg-slate-950 border border-slate-800 focus:border-fuchsia-500/50 rounded-xl p-4 text-slate-300 text-sm outline-none resize-none transition-colors shadow-inner"
-              placeholder="Vá à página de vendas que está a escalar, pressione Ctrl+A, Ctrl+C e cole todo o texto aqui..."
+              placeholder="Vá à página de vendas do concorrente, pressione Ctrl+A, Ctrl+C e cole todo o texto aqui..."
               value={competitorCopy}
               onChange={(e) => setCompetitorCopy(e.target.value)}
             ></textarea>
@@ -256,29 +414,29 @@ function ClonerPage() {
               <button 
                 onClick={() => handleAction('adapt')}
                 disabled={isProcessing}
-                className="bg-slate-950 hover:bg-fuchsia-600/20 text-slate-300 hover:text-fuchsia-300 hover:border-fuchsia-500/50 border border-slate-800 p-4 rounded-xl flex flex-col items-center justify-center gap-2 transition-all disabled:opacity-50 group"
+                className="bg-slate-950 hover:bg-fuchsia-600/20 text-slate-300 hover:text-fuchsia-300 hover:border-fuchsia-500/50 border border-slate-800 p-4 rounded-xl flex flex-col items-center justify-center gap-2 transition-all disabled:opacity-50 group border-fuchsia-500/30"
               >
-                {isProcessing && activeAction === 'adapt' ? <Loader2 className="w-6 h-6 animate-spin text-fuchsia-400" /> : <ArrowRightLeft className="w-6 h-6 text-slate-500 group-hover:text-fuchsia-400 transition-colors" />}
-                <span className="font-bold text-sm text-center">Adaptar Produto</span>
+                {isProcessing && activeAction === 'adapt' ? <Loader2 className="w-6 h-6 animate-spin text-fuchsia-400" /> : <ArrowRightLeft className="w-6 h-6 text-fuchsia-400 transition-colors" />}
+                <span className="font-bold text-sm text-center text-fuchsia-400">Criar Novo Funil</span>
               </button>
             </div>
 
             {showProductInput && !isProcessing && (
               <div className="mt-4 p-4 bg-fuchsia-500/10 border border-fuchsia-500/30 rounded-xl animate-in fade-in zoom-in duration-200">
                 <label className="block text-xs font-bold text-fuchsia-300 mb-2 uppercase tracking-wider">Novo Nicho ou Produto</label>
-                <div className="flex gap-2">
+                <div className="flex flex-col gap-3">
                   <input 
                     type="text" 
-                    placeholder="Ex: E-book de Receitas Low Carb" 
-                    className="flex-1 bg-slate-950 border border-fuchsia-500/30 rounded-lg px-3 py-2 text-white outline-none focus:border-fuchsia-500"
+                    placeholder="Ex: Escultura Decorativa de Luxo" 
+                    className="w-full bg-slate-950 border border-fuchsia-500/30 rounded-lg px-3 py-2 text-white outline-none focus:border-fuchsia-500 text-sm"
                     value={newProductName}
                     onChange={(e) => setNewProductName(e.target.value)}
                   />
                   <button 
                     onClick={() => handleAction('adapt')}
-                    className="bg-fuchsia-600 hover:bg-fuchsia-500 text-white px-4 py-2 rounded-lg font-bold transition-colors"
+                    className="bg-fuchsia-600 hover:bg-fuchsia-500 text-white px-4 py-2 rounded-lg font-bold transition-colors w-full flex items-center justify-center gap-2"
                   >
-                    Gerar
+                    <Sparkles size={16} /> Gerar Landing Page Visual
                   </button>
                 </div>
               </div>
@@ -286,12 +444,12 @@ function ClonerPage() {
           </div>
         </div>
 
-        <div className="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl flex flex-col relative overflow-hidden">
-          <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-800">
+        <div className="lg:col-span-8 bg-slate-900 border border-slate-800 rounded-2xl p-1 shadow-xl flex flex-col relative overflow-hidden h-[calc(100vh-180px)]">
+          <div className="flex items-center justify-between p-4 border-b border-slate-800 shrink-0">
              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-               <Bot className="text-fuchsia-500" /> Relatório da IA
+               <MonitorPlay className="text-fuchsia-500" /> {isAiResultObject ? "Construtor Visual" : "Relatório da IA"}
              </h3>
-             {aiResult && (
+             {aiResult && !isAiResultObject && (
                <button 
                  onClick={() => { navigator.clipboard.writeText(aiResult); alert("Copiado!"); }}
                  className="text-xs font-bold bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors"
@@ -299,26 +457,42 @@ function ClonerPage() {
                  <Copy size={14} /> Copiar
                </button>
              )}
+             {aiResult && isAiResultObject && (
+               <button 
+                 onClick={() => { navigator.clipboard.writeText(JSON.stringify(aiResult, null, 2)); alert("Código JSON Copiado!"); }}
+                 className="text-xs font-bold bg-fuchsia-600/20 hover:bg-fuchsia-600/40 border border-fuchsia-500/50 text-fuchsia-300 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors"
+               >
+                 <Code size={14} /> Exportar JSON
+               </button>
+             )}
           </div>
 
-          <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+          <div className="flex-1 overflow-hidden h-full">
             {isProcessing ? (
                <div className="h-full flex flex-col items-center justify-center text-fuchsia-400/80 animate-pulse">
                   <Loader2 className="w-12 h-12 animate-spin mb-4" />
-                  <p className="font-bold text-lg">A IA está a processar o Funil...</p>
+                  <p className="font-bold text-lg">A IA está a construir a página visual...</p>
                   <p className="text-sm text-fuchsia-400/50 mt-2">Isto pode demorar cerca de 10 a 20 segundos.</p>
                </div>
+            ) : isAiResultObject ? (
+               // RENDERIZAR LANDING PAGE VISUAL AQUI
+               <div className="h-full p-2 bg-slate-950">
+                  <VisualLandingPage data={aiResult} />
+               </div>
             ) : aiResult ? (
-               <div className="text-slate-300 text-sm leading-relaxed whitespace-pre-wrap font-medium">
-                  {aiResult.split('**').map((chunk, index) => 
-                     index % 2 === 1 ? <strong key={index} className="text-fuchsia-300 font-bold">{chunk}</strong> : chunk
-                  )}
+               // RENDERIZAR TEXTO BRUTO DAS OUTRAS AÇÕES
+               <div className="h-full p-6 overflow-y-auto custom-scrollbar">
+                  <div className="text-slate-300 text-sm leading-relaxed whitespace-pre-wrap font-medium">
+                    {typeof aiResult === 'string' ? aiResult.split('**').map((chunk, index) => 
+                        index % 2 === 1 ? <strong key={index} className="text-fuchsia-300 font-bold">{chunk}</strong> : chunk
+                    ) : null}
+                  </div>
                </div>
             ) : (
                <div className="h-full flex flex-col items-center justify-center text-slate-600">
                   <LayoutTemplate className="w-16 h-16 mb-4 opacity-20" />
                   <p className="text-center max-w-sm">
-                    Cole a estrutura da página de vendas concorrente à esquerda e clique numa das ferramentas para a IA gerar o seu novo funil.
+                    Cole a estrutura à esquerda e clique em <strong className="text-fuchsia-500">"Criar Novo Funil"</strong> para gerar uma Landing Page visual, persuasiva e 100% à prova de plágio.
                   </p>
                </div>
             )}
@@ -483,7 +657,7 @@ export default function App() {
       body: JSON.stringify({
         model: 'gpt-4o-mini',
         messages: [
-          { role: 'system', content: 'Você é um Especialista de Elite em Facebook Ads e Copywriting.' },
+          { role: 'system', content: 'É um Especialista de Elite em Facebook Ads e Copywriting.' },
           { role: 'user', content: prompt }
         ],
         temperature: 0.7
@@ -531,7 +705,7 @@ export default function App() {
     setIsAnalyzing(true); setAiAnalysisType(type); setAiFeedback("");
     let prompt = type === 'copy'
       ? `Atue como Especialista de Facebook Ads. Analise: Anunciante: ${ad.advertiser}, Copy: "${ad.copy}". Dê: 1. PONTOS FORTES 2. PONTOS FRACOS 3. COPY OTIMIZADA (AIDA/PAS com emojis e CTA).`
-      : `Atue como Roteirista de Vídeos (TikTok/VSL). Baseado nisto: "${ad.copy}". Crie um Roteiro Curto (30-60s): 1. HOOK 2. PROBLEMA 3. SOLUÇÃO 4. CTA.`;
+      : `Atue como Guionista de Vídeos (TikTok/VSL). Baseado nisto: "${ad.copy}". Crie um Guião Curto (30-60s): 1. HOOK 2. PROBLEMA 3. SOLUÇÃO 4. CTA.`;
     try {
       let feedback = aiProvider === 'chatgpt' ? await callChatGPT(prompt, chatGptToken.trim()) : await callGeminiWithRetry(prompt, geminiToken.trim());
       setAiFeedback(feedback);
@@ -798,7 +972,7 @@ export default function App() {
 
   return (
     <div className="flex h-screen bg-slate-950 text-slate-200 overflow-hidden font-sans">
-      <aside className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col hidden md:flex">
+      <aside className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col hidden md:flex shrink-0">
         <div className="p-6 border-b border-slate-800">
           <h1 className="text-2xl font-black tracking-tight flex items-center gap-2">
             <Target className="text-green-500" /> Ad<span className="text-slate-400">Sniper</span>
@@ -1109,7 +1283,7 @@ export default function App() {
                         <Sparkles size={14} /> Otimizar Copy
                       </button>
                       <button onClick={() => analyzeAdWithAI(selectedAd, 'script')} className="bg-fuchsia-600/20 hover:bg-fuchsia-600 text-fuchsia-300 hover:text-white border border-fuchsia-500/30 px-3 py-1.5 text-xs rounded-lg font-bold transition-all flex items-center gap-1.5">
-                        <Video size={14} /> Roteiro VSL
+                        <Video size={14} /> Guião VSL
                       </button>
                     </div>
                   )}
@@ -1119,7 +1293,7 @@ export default function App() {
                   <div className="py-8 flex flex-col items-center justify-center text-indigo-400">
                     <Loader2 className="w-8 h-8 animate-spin mb-3" />
                     <p className="font-medium text-sm text-center">
-                      {aiAnalysisType === 'script' ? 'A fazer engenharia reversa para criar o Roteiro do Vídeo...' : 'A dissecar e otimizar esta Copy para Alta Conversão...'}
+                      {aiAnalysisType === 'script' ? 'A fazer engenharia reversa para criar o Guião do Vídeo...' : 'A dissecar e otimizar esta Copy para Alta Conversão...'}
                     </p>
                   </div>
                 )}
