@@ -1,18 +1,138 @@
 // @ts-nocheck
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
-  Zap, Target, Crosshair, Loader2, Lock, ArrowRight, 
-  LayoutDashboard, PlayCircle, Image as ImageIcon, X, 
-  AlertCircle, ExternalLink, Calendar, Layers, Sparkles, Bot,
-  Heart, Filter, Video, Bookmark, DollarSign, Clock, Library, 
-  ArrowUpDown, ShieldAlert, SplitSquareHorizontal, Rocket, Trophy, PenTool, Copy, Settings
+  Settings, Zap, Target, Crosshair, Loader2, Lock, ArrowRight, 
+  LayoutDashboard, PlayCircle, Image as ImageIcon, BarChart2, X, Terminal, 
+  AlertCircle, Code, ExternalLink, Calendar, ThumbsUp, Layers, Sparkles, Bot,
+  Heart, Filter, Video, Bookmark, DollarSign, Clock, CheckCircle, Flame, Library, 
+  ArrowUpDown, ShieldAlert, SplitSquareHorizontal, Rocket, Trophy, PenTool, Copy
 } from 'lucide-react';
 
-// IMPORTAÇÕES DOS NOSSOS NOVOS MÓDULOS
-import { FusionBadge, StatusToVariant, StatusToText, StatusToIcon, PlatformBadge } from './components/SharedUI';
-import GeneratorPage from './pages/GeneratorPage';
-import ClonerPage from './pages/ClonerPage';
-import SettingsPage from './pages/SettingsPage';
+// ============================================================================
+// COMPONENTES DE DESIGN BASE
+// ============================================================================
+
+const FusionBadge = ({ icon: Icon, text, variant = 'default', className = '' }) => {
+  const variants = {
+    default: "bg-slate-800 text-slate-300 border-slate-700",
+    success: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+    warning: "bg-orange-500/10 text-orange-400 border-orange-500/20",
+    danger: "bg-rose-500/10 text-rose-400 border-rose-500/20",
+    brand: "bg-indigo-500/10 text-indigo-400 border-indigo-500/20",
+    gold: "bg-yellow-500/10 text-yellow-400 border-yellow-500/30"
+  };
+
+  return (
+    <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-[10px] font-bold tracking-wide uppercase ${variants[variant]} ${className}`}>
+      {Icon && <Icon size={12} strokeWidth={3} />}
+      {text}
+    </div>
+  );
+};
+
+const StatusToVariant = (score) => {
+  if (score >= 80) return 'warning';
+  if (score >= 50) return 'success';
+  return 'default';
+};
+
+const StatusToText = (score) => {
+  if (score >= 80) return '🔥 Super Escala';
+  if (score >= 50) return 'Validado';
+  return 'Teste';
+};
+
+const StatusToIcon = (score) => {
+  if (score >= 80) return Flame;
+  if (score >= 50) return CheckCircle;
+  return Clock;
+};
+
+const PlatformBadge = ({ platform }) => {
+  const text = platform && typeof platform === 'string' && platform.length > 20 ? platform.substring(0, 20) + "..." : platform;
+  return (
+    <span className="bg-slate-900/80 backdrop-blur-sm text-slate-200 px-2.5 py-1 rounded text-xs font-semibold border border-slate-700/50">
+      {text || "FACEBOOK"}
+    </span>
+  );
+};
+
+// ============================================================================
+// COMPONENTES DAS PÁGINAS (ABAS)
+// ============================================================================
+
+const GeneratorPage = () => {
+  return (
+    <div className="flex flex-col items-center justify-center py-20 px-4 text-center h-full">
+      <div className="w-24 h-24 bg-indigo-500/10 border border-indigo-500/20 rounded-full flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(99,102,241,0.2)]">
+        <PenTool className="w-10 h-10 text-indigo-400" />
+      </div>
+      <h2 className="text-3xl font-bold text-white mb-4">Gerador de Criativos IA</h2>
+      <p className="text-slate-400 max-w-xl mx-auto text-lg leading-relaxed mb-8">
+        O seu laboratório de alta conversão. Em breve, a IA irá pegar nas copys que você encontrou no Radar e transformá-las em roteiros de vídeo virais (VSL/TikTok), criar imagens dinâmicas e desenhar carrosséis persuasivos.
+      </p>
+      <button disabled className="bg-indigo-600/50 text-indigo-200 border border-indigo-500/30 px-8 py-3 rounded-xl font-bold flex items-center gap-2 cursor-not-allowed">
+        <Loader2 className="w-5 h-5 animate-spin" /> Em Desenvolvimento...
+      </button>
+    </div>
+  );
+};
+
+const ClonerPage = () => {
+  return (
+    <div className="flex flex-col items-center justify-center py-20 px-4 text-center h-full">
+      <div className="w-24 h-24 bg-fuchsia-500/10 border border-fuchsia-500/20 rounded-full flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(217,70,239,0.2)]">
+        <Copy className="w-10 h-10 text-fuchsia-400" />
+      </div>
+      <h2 className="text-3xl font-bold text-white mb-4">Clonador de Páginas</h2>
+      <p className="text-slate-400 max-w-xl mx-auto text-lg leading-relaxed mb-8">
+        Copie os funis milionários em 3 cliques. Em breve, poderá introduzir o link da página de vendas do seu concorrente e a nossa ferramenta irá extrair, limpar o código e preparar a estrutura para você hospedar no seu domínio.
+      </p>
+      <button disabled className="bg-fuchsia-600/50 text-fuchsia-200 border border-fuchsia-500/30 px-8 py-3 rounded-xl font-bold flex items-center gap-2 cursor-not-allowed">
+        <Loader2 className="w-5 h-5 animate-spin" /> Em Desenvolvimento...
+      </button>
+    </div>
+  );
+};
+
+const SettingsPage = ({ 
+  apifyToken, setApifyToken, actorId, setActorId, 
+  aiProvider, setAiProvider, geminiToken, setGeminiToken, 
+  chatGptToken, setChatGptToken, handleSaveSettings 
+}) => {
+  return (
+    <div className="max-w-2xl bg-slate-900 border border-slate-800 rounded-xl p-8 shadow-xl mx-auto mt-8">
+        <h2 className="text-2xl font-bold text-white mb-2 flex items-center gap-2"><Settings className="text-green-500"/> Configurações de API</h2>
+        <div className="space-y-6 mt-8">
+          
+          <div className="bg-slate-950 p-5 rounded-xl border border-slate-800">
+            <h3 className="text-lg font-bold text-slate-200 mb-4 flex items-center gap-2"><Zap className="text-green-500"/> Extração (Apify)</h3>
+            <label className="block text-sm font-bold text-slate-400 mb-2">Token da API</label>
+            <input type="password" value={apifyToken} onChange={e => setApifyToken(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-white outline-none mb-4" />
+            <label className="block text-sm font-bold text-slate-400 mb-2">ID do Actor</label>
+            <input type="text" value={actorId} onChange={e => setActorId(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-slate-300 outline-none" />
+          </div>
+
+          <div className="bg-slate-950 p-5 rounded-xl border border-slate-800">
+            <h3 className="text-lg font-bold text-slate-200 mb-4 flex items-center gap-2"><Sparkles className="text-indigo-500"/> Cérebro IA (Análise)</h3>
+            <select value={aiProvider} onChange={e => setAiProvider(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-white outline-none mb-4">
+                <option value="chatgpt">ChatGPT / OpenAI</option>
+                <option value="gemini">Google Gemini</option>
+            </select>
+            <label className="block text-sm font-bold text-slate-400 mb-2 mt-4">Chave de API do {aiProvider === 'chatgpt' ? 'ChatGPT' : 'Gemini'}</label>
+            <input type="password" value={aiProvider === 'chatgpt' ? chatGptToken : geminiToken} onChange={e => aiProvider === 'chatgpt' ? setChatGptToken(e.target.value) : setGeminiToken(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-white outline-none mb-2" />
+          </div>
+
+          <button onClick={handleSaveSettings} className="bg-green-600 w-full hover:bg-green-500 px-8 py-4 rounded-xl text-white font-bold transition-colors">Guardar Configurações</button>
+        </div>
+    </div>
+  );
+};
+
+
+// ============================================================================
+// NÚCLEO DA APLICAÇÃO (APP PRINCIPAL)
+// ============================================================================
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -175,7 +295,7 @@ export default function App() {
   };
 
   // =======================================================
-  // MOTOR DE MINERAÇÃO V3
+  // MOTOR DE MINERAÇÃO V4 - SCORING AVANÇADO
   // =======================================================
   const startMining = async () => {
     setMiningError(''); setSystemLogs([]); setMinDaysFilter(0); setVisibleAdsCount(24);
@@ -249,7 +369,7 @@ export default function App() {
       });
       if (adsToProcess.length === 0) adsToProcess = validAds; 
 
-      setMiningProgress(95); setMiningStatusMsg('Motor V3: A aplicar Rankeamento por Anunciante...');
+      setMiningProgress(95); setMiningStatusMsg('Motor V4: A aplicar Rankeamento Avançado...');
 
       const getBaseDomain = (url) => {
           if (!url || url.includes('facebook.com') || url.includes('fb.me') || url.includes('instagram.com')) return 'no-link';
@@ -368,30 +488,57 @@ export default function App() {
       });
 
       const formattedAds = Array.from(advertiserMap.values()).map(ad => {
+          
+          // Inteligência de Deteção de Padrões
           const recentAdsCount = ad.allDates ? ad.allDates.filter(d => d <= 7).length : 0;
           ad.isAggressiveScale = recentAdsCount >= 3 && ad.adCount >= 5;
           ad.isABTesting = ad.allCopies && ad.allCopies.size > 1 && ad.adCount >= 2;
           ad.isCreativeKing = ad.daysActive > 30 && ad.adCount >= 10;
           ad.isBlackHat = ['linktr.ee', 'bit.ly', 'shorturl', 'hotm.art', 'go.hotmart', 'monetizze', 'kiwify.com', 'perfectpay'].some(d => ad.targetUrl.toLowerCase().includes(d)) || (getBaseDomain(ad.targetUrl).length > 25);
 
-          const adScoreCalc = Math.min((ad.adCount / 30) * 50, 50); 
-          const daysScoreCalc = Math.min((ad.daysActive / 60) * 30, 30);
-          const platformScoreCalc = Math.min((ad.platformCount / 4) * 20, 20);
+          // MOTOR V4: Scoring Focado em Dinheiro Gasto (Volume x Tempo)
+          
+          // 1. Escala (Volume de Anúncios) - Teto reduzido para 15 anúncios (atingir 15 já dá nota máxima de escala)
+          const adScoreCalc = Math.min((ad.adCount / 15) * 55, 55); 
+
+          // 2. Consistência (Tempo no Ar) - Teto reduzido para 25 dias
+          const daysScoreCalc = Math.min((ad.daysActive / 25) * 35, 35);
+
+          // 3. Distribuição (Plataformas)
+          const platformScoreCalc = Math.min((ad.platformCount / 4) * 10, 10);
           
           let totalScore = Math.round(adScoreCalc + daysScoreCalc + platformScoreCalc);
-          if (ad.isAggressiveScale) totalScore = Math.min(totalScore + 10, 100);
-          if (ad.isCreativeKing) totalScore = Math.min(totalScore + 15, 100);
+          
+          // BOOSTS (O Ouro)
+          if (ad.adCount >= 4 && ad.daysActive >= 7) {
+              totalScore += 20; // Bónus de "Ouro Confirmado" (Investimento alto e constante)
+          }
 
-          ad.score = totalScore || 0;
-          ad.status = StatusToText(totalScore || 0);
+          if (ad.isAggressiveScale) totalScore += 15;
+          if (ad.isCreativeKing) totalScore += 15;
+
+          // Limita o teto máximo a 99 (gatilho mental de quase perfeição)
+          ad.score = Math.min(totalScore, 99); 
+          
+          // Atualiza o Status baseado na nova pontuação forte
+          if (ad.score >= 75) ad.status = "Escalando";
+          else if (ad.score >= 45) ad.status = "Validado";
+          else ad.status = "Teste";
+
           return ad;
       });
 
       setAds(formattedAds.sort((a, b) => (b.score || 0) - (a.score || 0)));
       setMiningProgress(100); setMiningStatusMsg('Radar Concluído com Sucesso!');
+
     } catch (error) {
+      console.error("Erro detetado:", error);
       let displayError = error instanceof Error ? error.message : "Ocorreu um erro desconhecido.";
-      setMiningError(displayError); addLog(`ERRO: ${displayError}`, 'error');
+      if (displayError.includes('Failed to fetch')) {
+        displayError = "Erro de Ligação: O navegador bloqueou o acesso à API. Desligue o seu bloqueador de anúncios (AdBlock) para o site 'api.apify.com'.";
+      }
+      setMiningError(displayError);
+      addLog(`ERRO: ${displayError}`, 'error');
     } finally {
       setTimeout(() => { setIsMining(false); setMiningProgress(0); }, 800);
     }
@@ -667,6 +814,7 @@ export default function App() {
                               </button>
                           )}
                       </div>
+
                     </div>
                   </div>
                 ))}
