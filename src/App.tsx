@@ -1,16 +1,66 @@
 // @ts-nocheck
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Settings, Zap, Target, Crosshair, Loader2, Lock, ArrowRight,
-  LayoutDashboard, PlayCircle, Image as ImageIcon, BarChart2, X,
-  AlertCircle, ExternalLink, Calendar, ThumbsUp, Layers, Sparkles, Bot,
+  LayoutDashboard, PlayCircle, Image as ImageIcon, BarChart2, X, Terminal,
+  AlertCircle, Code, ExternalLink, Calendar, ThumbsUp, Layers, Sparkles, Bot,
   Heart, Filter, Video, Bookmark, DollarSign, Clock, CheckCircle, Flame, Library,
-  ArrowUpDown, ShieldAlert, SplitSquareHorizontal, Rocket, Trophy, PenTool,
-  Search, RefreshCw, LayoutTemplate, Check, HelpCircle
+  ArrowUpDown, ShieldAlert, SplitSquareHorizontal, Rocket, Trophy, PenTool, Copy,
+  Search, RefreshCw, LayoutTemplate, ArrowRightLeft, MonitorPlay, Check, HelpCircle, Upload,
+  Mic, Play, Pause, VolumeX, Type, FileAudio, Download, Wand2, FileText
 } from 'lucide-react';
 
 // ============================================================================
-// COMPONENTES DAS PÁGINAS (Settings, Generator)
+// UTILITÁRIOS PARA ÁUDIO E IA
+// ============================================================================
+
+function base64ToArrayBuffer(base64) {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
+
+function pcmToWav(pcm16, sampleRate) {
+  const numChannels = 1;
+  const byteRate = sampleRate * numChannels * 2;
+  const blockAlign = numChannels * 2;
+  const buffer = new ArrayBuffer(44 + pcm16.byteLength);
+  const view = new DataView(buffer);
+
+  const writeString = (offset, string) => {
+    for (let i = 0; i < string.length; i++) {
+      view.setUint8(offset + i, string.charCodeAt(i));
+    }
+  };
+
+  writeString(0, 'RIFF');
+  view.setUint32(4, 36 + pcm16.byteLength, true);
+  writeString(8, 'WAVE');
+  writeString(12, 'fmt ');
+  view.setUint32(16, 16, true); // Subchunk1Size
+  view.setUint16(20, 1, true); // AudioFormat (PCM)
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true); // BitsPerSample
+  writeString(36, 'data');
+  view.setUint32(40, pcm16.byteLength, true);
+
+  let offset = 44;
+  for (let i = 0; i < pcm16.length; i++, offset += 2) {
+    view.setInt16(offset, pcm16[i], true);
+  }
+
+  return new Blob([buffer], { type: 'audio/wav' });
+}
+
+// ============================================================================
+// COMPONENTES DAS PÁGINAS
 // ============================================================================
 
 function SettingsPage({ 
@@ -32,13 +82,15 @@ function SettingsPage({
           </div>
 
           <div className="bg-slate-950 p-5 rounded-xl border border-slate-800">
-            <h3 className="text-lg font-bold text-slate-200 mb-4 flex items-center gap-2"><Sparkles className="text-indigo-500"/> Cérebro IA (Análise Visual)</h3>
+            <h3 className="text-lg font-bold text-slate-200 mb-4 flex items-center gap-2"><Sparkles className="text-indigo-500"/> Cérebro IA (Análise e Geração)</h3>
             <select value={aiProvider} onChange={e => setAiProvider(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-white outline-none mb-4">
                 <option value="chatgpt">ChatGPT / OpenAI (GPT-4o Vision)</option>
-                <option value="gemini">Google Gemini (Gemini 1.5 Vision)</option>
+                <option value="gemini">Google Gemini (Gemini 1.5 Pro)</option>
             </select>
-            <label className="block text-sm font-bold text-slate-400 mb-2 mt-4">Chave de API do {aiProvider === 'chatgpt' ? 'ChatGPT' : 'Gemini'}</label>
-            <input type="password" value={aiProvider === 'chatgpt' ? chatGptToken : geminiToken} onChange={e => aiProvider === 'chatgpt' ? setChatGptToken(e.target.value) : setGeminiToken(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-white outline-none mb-2" />
+            <label className="block text-sm font-bold text-slate-400 mb-2 mt-4">Chave de API do ChatGPT</label>
+            <input type="password" value={chatGptToken} onChange={e => setChatGptToken(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-white outline-none mb-2" />
+            <label className="block text-sm font-bold text-slate-400 mb-2 mt-4">Chave de API do Google Gemini (Obrigatória para TTS de Vozes)</label>
+            <input type="password" value={geminiToken} onChange={e => setGeminiToken(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-white outline-none mb-2" />
           </div>
 
           <button onClick={handleSaveSettings} className="bg-green-600 w-full hover:bg-green-500 px-8 py-4 rounded-xl text-white font-bold transition-colors">Guardar Configurações</button>
@@ -47,19 +99,430 @@ function SettingsPage({
   );
 }
 
+// ============================================================================
+// NOVO: GERADOR DE CRIATIVOS E ESTÚDIO DE VÍDEO IA
+// ============================================================================
 function GeneratorPage() {
+  const [step, setStep] = useState(1); // 1: Upload, 2: Transcrever/Reescrever, 3: Voz/Preview
+  const [videoFile, setVideoFile] = useState(null);
+  const [videoUrl, setVideoUrl] = useState('');
+  const [videoBase64, setVideoBase64] = useState('');
+  const [videoMime, setVideoMime] = useState('');
+  
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [statusMsg, setStatusMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+
+  const [originalScript, setOriginalScript] = useState('');
+  const [strategy, setStrategy] = useState('rewrite_same'); // 'rewrite_same' ou 'new_angles'
+  const [newScript, setNewScript] = useState('');
+
+  const [selectedVoice, setSelectedVoice] = useState('Puck');
+  const [generatedAudioUrl, setGeneratedAudioUrl] = useState('');
+  
+  const videoRef = useRef(null);
+  const audioRef = useRef(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  // Vozes disponíveis no Gemini TTS
+  const voices = [
+    { id: 'Puck', name: 'Puck (Animado/Upbeat)', icon: '🎉' },
+    { id: 'Zephyr', name: 'Zephyr (Brilhante)', icon: '✨' },
+    { id: 'Charon', name: 'Charon (Informativo)', icon: '📊' },
+    { id: 'Kore', name: 'Kore (Firme/Confiante)', icon: '🎯' },
+    { id: 'Fenrir', name: 'Fenrir (Empolgado)', icon: '🔥' },
+    { id: 'Aoede', name: 'Aoede (Tranquilo/Suave)', icon: '🍃' }
+  ];
+
+  const handleVideoUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (file.size > 20 * 1024 * 1024) {
+        setErrorMsg("Para o processamento no navegador, o vídeo deve ter menos de 20MB.");
+        return;
+      }
+      setVideoFile(file);
+      setVideoUrl(URL.createObjectURL(file));
+      setVideoMime(file.type);
+      setErrorMsg('');
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setVideoBase64(reader.result.split(',')[1]);
+        setStep(2);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const transcribeVideo = async () => {
+    const geminiToken = localStorage.getItem('adsniper_gemini_token');
+    if (!geminiToken) {
+      setErrorMsg("A chave da API do Google Gemini é obrigatória nas Configurações para transcrição de vídeo.");
+      return;
+    }
+
+    setIsProcessing(true);
+    setStatusMsg("A IA está assistindo ao vídeo e transcrevendo o áudio...");
+    setErrorMsg('');
+
+    try {
+      const endpointUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${geminiToken}`;
+      
+      const parts = [
+        { text: "Transcreva o áudio deste vídeo com precisão. Retorne APENAS o texto falado, sem marcações ou comentários adicionais." },
+        { inlineData: { mimeType: videoMime, data: videoBase64 } }
+      ];
+
+      const response = await fetch(endpointUrl, {
+          method: 'POST', 
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: parts }] })
+      });
+      
+      if (!response.ok) throw new Error("Falha ao contatar a Gemini API para transcrição.");
+      const data = await response.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "Nenhuma fala detectada.";
+      
+      setOriginalScript(text.trim());
+      setNewScript(text.trim()); // Inicia com o mesmo texto
+    } catch (err) {
+      setErrorMsg(err.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const generateNewCopy = async () => {
+    const provider = localStorage.getItem('adsniper_ai_provider') || 'chatgpt';
+    const geminiToken = localStorage.getItem('adsniper_gemini_token');
+    const chatGptToken = localStorage.getItem('adsniper_gpt_token');
+
+    setIsProcessing(true);
+    setStatusMsg("Reescrevendo o script com técnicas de alta conversão...");
+    setErrorMsg('');
+
+    let prompt = "";
+    if (strategy === 'rewrite_same') {
+      prompt = `Atue como um Copywriter de Elite. Vou te enviar a transcrição de um vídeo de vendas/anúncio. Sua tarefa é reescrever o texto mantendo EXATAMENTE a mesma ideia, promessa e duração aproximada, mas tornando o texto mais persuasivo, natural e com melhor retenção (Hook melhorado). Retorne APENAS o novo texto corrido. Transcrição: "${originalScript}"`;
+    } else {
+      prompt = `Atue como um Copywriter de Elite. Vou te enviar a transcrição de um anúncio. Quero que você crie um ÂNGULO TOTALMENTE NOVO para vender o mesmo produto. Mude o "Hook" (gancho inicial) para algo mais agressivo ou curioso. Foque na dor do cliente. Retorne APENAS o novo script corrido, pronto para ser falado no vídeo. Transcrição original: "${originalScript}"`;
+    }
+
+    try {
+      let resultText = "";
+      if (provider === 'chatgpt') {
+        if (!chatGptToken) throw new Error("Token ChatGPT ausente.");
+        const res = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${chatGptToken}` },
+            body: JSON.stringify({ model: 'gpt-4o-mini', messages: [{ role: 'user', content: prompt }] })
+        });
+        const data = await res.json();
+        resultText = data.choices[0].message.content;
+      } else {
+        if (!geminiToken) throw new Error("Token Gemini ausente.");
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiToken}`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+        });
+        const data = await res.json();
+        resultText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      }
+      setNewScript(resultText.trim().replace(/\*/g, ''));
+    } catch (err) {
+      setErrorMsg(err.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const generateTTSAudio = async () => {
+    if (!newScript.trim()) {
+      setErrorMsg("O script não pode estar vazio.");
+      return;
+    }
+
+    const geminiToken = localStorage.getItem('adsniper_gemini_token');
+    if (!geminiToken) {
+      setErrorMsg("A chave da API do Google Gemini é obrigatória para gerar as vozes ultrarrealistas.");
+      return;
+    }
+
+    setIsProcessing(true);
+    setStatusMsg("Gerando narração humana ultrarrealista...");
+    setErrorMsg('');
+    setGeneratedAudioUrl('');
+    setIsPlaying(false);
+
+    try {
+      const payload = {
+        contents: [{ parts: [{ text: newScript }] }],
+        generationConfig: {
+            responseModalities: ["AUDIO"],
+            speechConfig: {
+                voiceConfig: { prebuiltVoiceConfig: { voiceName: selectedVoice } }
+            }
+        },
+        model: "gemini-2.5-flash-preview-tts"
+      };
+
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${geminiToken}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) throw new Error("Falha na geração de áudio (TTS). Verifique sua quota/token.");
+      
+      const result = await response.json();
+      const part = result?.candidates?.[0]?.content?.parts?.[0];
+      const audioData = part?.inlineData?.data;
+      const mimeType = part?.inlineData?.mimeType;
+
+      if (audioData && mimeType && mimeType.startsWith("audio/")) {
+          const sampleRateMatch = mimeType.match(/rate=(\d+)/);
+          const sampleRate = sampleRateMatch ? parseInt(sampleRateMatch[1], 10) : 24000;
+          
+          const pcmData = base64ToArrayBuffer(audioData);
+          const pcm16 = new Int16Array(pcmData);
+          const wavBlob = pcmToWav(pcm16, sampleRate);
+          const audioUrl = URL.createObjectURL(wavBlob);
+          
+          setGeneratedAudioUrl(audioUrl);
+          setStep(3); // Avança para o Preview
+      } else {
+          throw new Error("A IA não retornou um formato de áudio válido.");
+      }
+    } catch (err) {
+      setErrorMsg(err.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const togglePlayback = () => {
+    if (isPlaying) {
+      videoRef.current?.pause();
+      audioRef.current?.pause();
+    } else {
+      // Reinicia do zero se tiver acabado
+      if (audioRef.current?.ended) {
+        if(videoRef.current) videoRef.current.currentTime = 0;
+        if(audioRef.current) audioRef.current.currentTime = 0;
+      }
+      videoRef.current?.play();
+      audioRef.current?.play();
+    }
+    setIsPlaying(!isPlaying);
+  };
+
+  // Sincroniza estado de play/pause se o áudio acabar
+  useEffect(() => {
+    const audioEl = audioRef.current;
+    if (audioEl) {
+      const handleEnded = () => { setIsPlaying(false); videoRef.current?.pause(); };
+      audioEl.addEventListener('ended', handleEnded);
+      return () => audioEl.removeEventListener('ended', handleEnded);
+    }
+  }, [generatedAudioUrl]);
+
   return (
-    <div className="flex flex-col items-center justify-center py-20 px-4 text-center h-full">
-      <div className="w-24 h-24 bg-indigo-500/10 border border-indigo-500/20 rounded-full flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(99,102,241,0.2)]">
-        <PenTool className="w-10 h-10 text-indigo-400" />
+    <div className="max-w-7xl mx-auto py-8 px-4 md:px-8 h-full flex flex-col overflow-y-auto">
+      <div className="flex items-center gap-4 mb-8 shrink-0">
+        <div className="w-14 h-14 bg-indigo-500/10 border border-indigo-500/30 rounded-2xl flex items-center justify-center shadow-[0_0_20px_rgba(99,102,241,0.15)]">
+          <Wand2 className="w-7 h-7 text-indigo-400" />
+        </div>
+        <div>
+          <h2 className="text-3xl font-bold text-white tracking-tight">Estúdio de <span className="text-indigo-500">Criativos IA</span></h2>
+          <p className="text-slate-400 mt-1">Reescreva, reduble e crie novos anúncios a partir dos seus vídeos vencedores.</p>
+        </div>
       </div>
-      <h2 className="text-3xl font-bold text-white mb-4">Gerador de Criativos IA</h2>
-      <p className="text-slate-400 max-w-xl mx-auto text-lg leading-relaxed mb-8">
-        O seu laboratório de alta conversão. Em breve, a IA irá pegar nas copys que encontrou no Radar e transformá-las em guiões de vídeo virais (VSL/TikTok), criar imagens dinâmicas e desenhar carrosséis persuasivos.
-      </p>
-      <button disabled className="bg-indigo-600/50 text-indigo-200 border border-indigo-500/30 px-8 py-3 rounded-xl font-bold flex items-center gap-2 cursor-not-allowed">
-        <Loader2 className="w-5 h-5 animate-spin" /> Em Desenvolvimento...
-      </button>
+
+      {errorMsg && (
+        <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/30 flex items-start gap-4 shrink-0">
+          <AlertCircle className="w-6 h-6 text-red-500 shrink-0 mt-0.5" />
+          <p className="text-slate-300 text-sm leading-relaxed">{errorMsg}</p>
+        </div>
+      )}
+
+      {/* STEP 1: UPLOAD */}
+      {step === 1 && (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="max-w-xl w-full bg-slate-900 border border-slate-800 rounded-3xl p-10 shadow-2xl text-center">
+            <div className="w-20 h-20 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Video className="w-10 h-10 text-indigo-500" />
+            </div>
+            <h3 className="text-2xl font-bold text-white mb-2">Importar Anúncio Base</h3>
+            <p className="text-slate-400 text-sm mb-8 leading-relaxed">
+              Faça o upload do vídeo que você deseja modelar. A IA vai transcrever o roteiro original automaticamente.
+            </p>
+            <div className="relative border-2 border-dashed border-slate-700 hover:border-indigo-500/50 rounded-2xl p-10 transition-all bg-slate-950 cursor-pointer group">
+              <input type="file" accept="video/mp4,video/webm,video/mov" onChange={handleVideoUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+              <Upload className="w-10 h-10 text-slate-600 group-hover:text-indigo-400 mx-auto mb-3 transition-colors" />
+              <span className="font-bold text-slate-300 group-hover:text-white transition-colors">Selecionar Vídeo</span>
+              <p className="text-xs text-slate-500 mt-2">MP4 ou WebM (Max 20MB)</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 2 & 3: TRANSCRIÇÃO, COPY E PREVIEW */}
+      {step >= 2 && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 flex-1">
+          
+          {/* PAINEL ESQUERDO: LÓGICA E TEXTOS */}
+          <div className="lg:col-span-7 flex flex-col gap-6">
+            
+            {/* Bloco de Transcrição */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl relative overflow-hidden">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold text-slate-300 flex items-center gap-2">
+                  <FileText size={18} className="text-emerald-500" /> Script Original (Transcrição)
+                </h3>
+                {!originalScript && (
+                  <button onClick={transcribeVideo} disabled={isProcessing} className="text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors disabled:opacity-50">
+                    {isProcessing && !originalScript ? <Loader2 size={14} className="animate-spin" /> : <Mic size={14} />} Extrair Script
+                  </button>
+                )}
+              </div>
+              
+              <textarea 
+                className="w-full h-32 bg-slate-950 border border-slate-800 focus:border-emerald-500/50 rounded-xl p-4 text-slate-400 text-sm outline-none resize-none transition-colors"
+                placeholder={isProcessing && !originalScript ? "Ouvindo o vídeo e escrevendo..." : "O script original do vídeo aparecerá aqui..."}
+                value={originalScript}
+                onChange={(e) => setOriginalScript(e.target.value)}
+                readOnly={isProcessing}
+              ></textarea>
+            </div>
+
+            {/* Bloco de Copywriting */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold text-slate-300 flex items-center gap-2">
+                  <Wand2 size={18} className="text-indigo-500" /> Nova Copy Estratégica
+                </h3>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-4 mb-4">
+                <select value={strategy} onChange={e => setStrategy(e.target.value)} className="flex-1 bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm font-medium text-slate-300 outline-none">
+                  <option value="rewrite_same">Melhorar persuasão (Manter ideia principal)</option>
+                  <option value="new_angles">Criar novos ângulos (Nova dor/Hook)</option>
+                </select>
+                <button onClick={generateNewCopy} disabled={isProcessing || !originalScript} className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-50 whitespace-nowrap shadow-[0_0_15px_rgba(99,102,241,0.3)]">
+                  {isProcessing && statusMsg.includes("Reescrevendo") ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />} 
+                  Reescrever IA
+                </button>
+              </div>
+
+              <textarea 
+                className="w-full h-40 bg-slate-950 border border-slate-800 focus:border-indigo-500/50 rounded-xl p-4 text-white font-medium text-sm outline-none resize-none transition-colors leading-relaxed"
+                placeholder="A nova variação do roteiro aparecerá aqui. Você pode editar manualmente."
+                value={newScript}
+                onChange={(e) => setNewScript(e.target.value)}
+              ></textarea>
+            </div>
+
+            {/* Bloco de Voz e Áudio */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+              <h3 className="font-bold text-slate-300 flex items-center gap-2 mb-4">
+                <FileAudio size={18} className="text-fuchsia-500" /> Voz e Redublagem
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
+                {voices.map(v => (
+                  <div key={v.id} onClick={() => setSelectedVoice(v.id)} className={`p-3 rounded-xl border cursor-pointer transition-all flex flex-col items-center justify-center gap-1 ${selectedVoice === v.id ? 'bg-fuchsia-500/10 border-fuchsia-500/50 text-fuchsia-400' : 'bg-slate-950 border-slate-800 text-slate-400 hover:bg-slate-800'}`}>
+                    <span className="text-xl mb-1">{v.icon}</span>
+                    <span className="text-xs font-bold text-center">{v.name}</span>
+                  </div>
+                ))}
+              </div>
+              <button onClick={generateTTSAudio} disabled={isProcessing || !newScript} className="w-full bg-fuchsia-600 hover:bg-fuchsia-500 text-white p-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-50 shadow-[0_0_15px_rgba(217,70,239,0.3)]">
+                {isProcessing && statusMsg.includes("Gerando") ? <><Loader2 className="w-5 h-5 animate-spin" /> Processando Áudio...</> : <><Mic className="w-5 h-5" /> Gerar Narração do Vídeo</>}
+              </button>
+            </div>
+
+          </div>
+
+          {/* PAINEL DIREITO: PREVIEW DO VÍDEO (ESTÚDIO) */}
+          <div className="lg:col-span-5 flex flex-col">
+             <div className="sticky top-8 bg-slate-900 border border-slate-800 rounded-3xl p-2 shadow-2xl flex flex-col overflow-hidden">
+                <div className="px-4 py-3 flex items-center justify-between border-b border-slate-800/50">
+                  <span className="font-bold text-white text-sm flex items-center gap-2"><PlayCircle size={16} className="text-indigo-400"/> Player de Preview</span>
+                  {step === 3 && (
+                    <span className="bg-emerald-500/10 text-emerald-400 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider">Pronto</span>
+                  )}
+                </div>
+
+                <div className="relative aspect-[9/16] bg-black rounded-2xl overflow-hidden mx-auto w-full max-w-[320px] shadow-inner mt-4 group">
+                  {/* VÍDEO ORIGINAL MUTADO */}
+                  <video 
+                    ref={videoRef} 
+                    src={videoUrl} 
+                    muted 
+                    playsInline 
+                    loop
+                    className="absolute inset-0 w-full h-full object-cover"
+                  />
+                  
+                  {/* ÁUDIO GERADO PELA IA */}
+                  {generatedAudioUrl && <audio ref={audioRef} src={generatedAudioUrl} />}
+
+                  {/* OVERLAY DE LEGENDAS FAKES (Apenas no step 3) */}
+                  {step === 3 && isPlaying && (
+                    <div className="absolute inset-x-0 bottom-24 p-4 flex justify-center pointer-events-none">
+                       <div className="bg-black/60 backdrop-blur-sm border border-white/10 px-4 py-3 rounded-xl max-w-[90%] text-center">
+                          <p className="text-white font-bold text-sm leading-tight text-shadow-sm shadow-black">
+                            {newScript.substring(0, 80)}...
+                          </p>
+                       </div>
+                    </div>
+                  )}
+
+                  {/* OVERLAY DE ESTADO INICIAL/PAUSADO */}
+                  {!isPlaying && (
+                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center backdrop-blur-[2px]">
+                      {step < 3 ? (
+                        <div className="text-center p-6">
+                           <LayoutTemplate className="w-12 h-12 text-slate-600 mx-auto mb-3" />
+                           <p className="text-sm font-bold text-slate-400">Preview Indisponível</p>
+                           <p className="text-xs text-slate-500 mt-1">Gere a narração para ativar.</p>
+                        </div>
+                      ) : (
+                        <button onClick={togglePlayback} className="w-16 h-16 bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-full flex items-center justify-center transition-transform hover:scale-110 border border-white/30">
+                          <Play className="w-8 h-8 text-white ml-1" fill="currentColor" />
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* CONTROLES DO PLAYER (Aparecem no hover se estiver tocando) */}
+                  {step === 3 && isPlaying && (
+                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/50 backdrop-blur-md border border-white/20 rounded-full px-4 py-2 flex items-center gap-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                       <button onClick={togglePlayback} className="text-white hover:text-indigo-400 transition-colors">
+                          <Pause size={20} fill="currentColor" />
+                       </button>
+                       <div className="w-px h-4 bg-white/20"></div>
+                       <Volume2 size={18} className="text-white/70" />
+                    </div>
+                  )}
+                </div>
+
+                {/* BOTÕES DE EXPORTAÇÃO */}
+                {step === 3 && (
+                  <div className="mt-6 p-4">
+                    <p className="text-[10px] text-slate-500 text-center mb-3">O preview sincroniza o áudio gerado com o vídeo no navegador. Para exportar, baixe o áudio e junte no seu editor (ex: CapCut).</p>
+                    <a href={generatedAudioUrl} download="AdSniper_Voz_IA.wav" className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm py-3 rounded-xl flex items-center justify-center gap-2 transition-colors border border-slate-700">
+                      <Download size={16} /> Baixar Áudio (.wav)
+                    </a>
+                    <button onClick={() => { setStep(1); setVideoFile(null); setGeneratedAudioUrl(''); setOriginalScript(''); setNewScript(''); }} className="w-full mt-2 text-slate-500 hover:text-white text-xs font-bold py-2 transition-colors">
+                      Criar Novo Vídeo
+                    </button>
+                  </div>
+                )}
+             </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -551,7 +1014,7 @@ export default function App() {
           <p className="text-xs font-bold text-slate-500 mb-2 mt-6 px-3 uppercase tracking-wider">Criação</p>
           
           <button onClick={() => setActiveTab('generator')} className={`w-full text-left p-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'generator' ? 'bg-indigo-600/10 text-indigo-400 border border-indigo-500/20' : 'hover:bg-slate-800 text-slate-400'}`}>
-            <PenTool className="w-5 h-5" /> Gerador de Criativos
+            <PenTool className="w-5 h-5" /> Estúdio de Criativos
           </button>
 
           <div className="mt-auto pt-6">
