@@ -668,6 +668,7 @@ Descoberta
                           </button>
                       )}
                   </div>
+
                 </div>
               </div>
             ))}
@@ -767,6 +768,7 @@ Descoberta
                 </div>
              )}
           </div>
+
         </div>
 
         <div className="p-4 bg-slate-900 border-t border-slate-800 flex flex-col sm:flex-row gap-3">
