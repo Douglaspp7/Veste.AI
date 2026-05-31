@@ -180,6 +180,56 @@ function ClonerPage() {
   const [errorMsg, setErrorMsg] = useState('');
   const [showProductInput, setShowProductInput] = useState(false);
 
+  // FUNÇÃO DE LIMPEZA DE HTML: Extrai hierarquia visual e texto
+  const parseHTMLToContext = (inputStr) => {
+    // Se não for HTML (ex: colou texto simples), devolvemos como está
+    if (!/<html|<body|<div/i.test(inputStr)) return inputStr;
+
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(inputStr, 'text/html');
+
+      // Limpar lixo inútil que consome tokens da IA
+      doc.querySelectorAll('script, style, noscript, iframe, svg, path, nav, footer, header').forEach(el => el.remove());
+
+      let extractedData = "ESTRUTURA VISUAL E TEXTOS DA PÁGINA (Análise feita via HTML):\n\n";
+
+      // Função recursiva para ler o DOM mantendo a ordem dos elementos
+      const walkDOM = (node) => {
+        let result = "";
+        if (node.nodeType === 3) { // Text node
+          const text = node.textContent.trim();
+          if (text.length > 0) result += text + " ";
+        } else if (node.nodeType === 1) { // Element node
+          const tag = node.tagName.toLowerCase();
+          
+          if (tag === 'img') {
+            const src = node.getAttribute('src') || '';
+            const alt = node.getAttribute('alt') || 'Sem descrição alternativa';
+            // Marca a imagem para a IA saber que existe contexto visual aqui
+            result += `\n[IMAGEM AQUI: descrição/alt="${alt}"]\n`;
+          } else if (['h1', 'h2', 'h3', 'h4'].includes(tag)) {
+            // Destaca a hierarquia de títulos
+            result += `\n\n[TÍTULO PRINCIPAL ${tag.toUpperCase()}]: ${node.textContent.trim()}\n`;
+          } else {
+            // Continua a ler os filhos
+            node.childNodes.forEach(child => {
+              result += walkDOM(child);
+            });
+          }
+        }
+        return result;
+      };
+
+      let cleanContent = walkDOM(doc.body).replace(/\s{2,}/g, ' ').trim();
+      return extractedData + cleanContent;
+
+    } catch (error) {
+      console.warn("Falha ao analisar HTML. Enviando texto bruto.", error);
+      return inputStr; // fallback
+    }
+  };
+
   // Função interna para chamar a IA
   const callAI = async (prompt) => {
     const provider = localStorage.getItem('adsniper_ai_provider') || 'chatgpt';
@@ -194,7 +244,7 @@ function ClonerPage() {
     }
 
     if (provider === 'chatgpt') {
-      const response = await fetch('[https://api.openai.com/v1/chat/completions](https://api.openai.com/v1/chat/completions)', {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${chatGptToken}` },
           body: JSON.stringify({
@@ -245,7 +295,7 @@ function ClonerPage() {
 
   const handleAction = async (actionType) => {
     if (!competitorCopy.trim()) {
-      setErrorMsg("Por favor, cole a copy ou a página de vendas do seu concorrente primeiro.");
+      setErrorMsg("Por favor, cole a copy ou o Código HTML da página de vendas do seu concorrente primeiro.");
       return;
     }
 
@@ -259,36 +309,39 @@ function ClonerPage() {
     setActiveAction(actionType);
     setAiResult('');
 
+    // Prepara os dados antes de mandar para a IA (Converte HTML em Esqueleto limpo se for o caso)
+    const parsedContext = parseHTMLToContext(competitorCopy);
+
     let prompt = '';
 
     switch (actionType) {
       case 'analyze':
-        prompt = `Atue como um Especialista em CRO (Otimização de Conversão) e Copywriting. Analise a estrutura desta página de vendas concorrente. 
+        prompt = `Atue como um Especialista em CRO (Otimização de Conversão) e Copywriting. Analise a estrutura desta página de vendas concorrente (o texto inclui tags de marcação de imagens e hierarquia visual). 
         Destaque de forma clara: 
-        1. O que está forte nesta estrutura (Gatilhos mentais bem usados). 
+        1. O que está forte nesta estrutura e uso de imagens (Gatilhos mentais bem usados). 
         2. Falhas e oportunidades de melhoria que o anunciante deixou na mesa. 
         3. Sugestões de novos ângulos de vendas para EU usar e ganhar deles. 
-        Copy do Concorrente: "${competitorCopy}"`;
+        Dados Analisados: "${parsedContext}"`;
         break;
       
       case 'spin':
-        prompt = `Atue como um Copywriter de Elite. Reescreva a seguinte copy de vendas para ser 100% original (anti-plágio) aos olhos do Google e Facebook, mas mantenha a mesma força persuasiva, estrutura de promessa e gatilhos mentais. Faça um 'Spin' inteligente, melhorando a fluidez.
-        Copy Original: "${competitorCopy}"`;
+        prompt = `Atue como um Copywriter de Elite. Reescreva a seguinte copy de vendas para ser 100% original (anti-plágio) aos olhos do Google e Facebook, mas mantenha a mesma força persuasiva, estrutura de promessa e gatilhos mentais. Faça um 'Spin' inteligente.
+        Dados Originais: "${parsedContext}"`;
         break;
 
       case 'wireframe':
-        prompt = `Atue como um Web Designer de Alta Conversão. Leia esta copy de vendas e crie um 'Esqueleto' (Wireframe) detalhado de como a Landing Page deve ser montada visualmente no WordPress/Elementor/Shopify. 
-        Liste os blocos em ordem lógica de vendas (ex: Bloco 1: Headline e Vídeo de Vendas (VSL). Bloco 2: Botão de Compra com Escassez. Bloco 3: 3 Benefícios em colunas...). 
-        Copy base: "${competitorCopy}"`;
+        prompt = `Atue como um Web Designer de Alta Conversão. Leia este mapeamento da página concorrente e crie um 'Esqueleto' (Wireframe) detalhado de como a Landing Page deve ser montada visualmente no WordPress/Elementor. Note que extraí marcações de [IMAGEM] e [TÍTULOS]. 
+        Liste os blocos em ordem lógica de vendas (ex: Bloco 1: Headline e Vídeo de Vendas. Bloco 2: Benefícios com Ícones...). 
+        Base de Dados: "${parsedContext}"`;
         break;
 
       case 'adapt':
         // PROMPT ATUALIZADO PARA GERAR JSON E EVITAR PLÁGIO
         prompt = `Atue como um Engenheiro de Funis e Web Designer especialista em CRO.
-        Vou passar-lhe a copy de uma página de vendas de sucesso. 
+        Vou passar-lhe a estrutura extraída (textos e imagens mapeadas) de uma página de vendas de sucesso. 
 
         A sua tarefa é fazer a engenharia reversa dos gatilhos mentais e recriar uma Landing Page INTEIRA, do zero, para um NOVO produto chamado '${newProductName}'.
-        Para garantir 0% de plágio, MUDE O FRAMEWORK de persuasão (ex: se o original foca na 'Dor', foque na 'Transformação/Desejo', ou mude a estrutura lógica do funil). Crie novos benefícios lógicos e um tom de venda único.
+        Para garantir 0% de plágio, MUDE O FRAMEWORK de persuasão. Crie novos benefícios lógicos, um tom de venda único, e sugira que imagens devem ser usadas nos lugares das antigas.
 
         Regra CRÍTICA: Você DEVE retornar APENAS um objeto JSON válido. Não adicione texto antes ou depois do JSON. 
         Use este formato exato:
@@ -297,12 +350,12 @@ function ClonerPage() {
           "blocos": [
             { "tipo": "header", "headline": "A nova super promessa focada na transformação", "subheadline": "O subtítulo de apoio que quebra a principal objeção" },
             { "tipo": "vsl_section", "texto_apoio": "Ligue o som do seu dispositivo e veja como isto funciona na prática", "botao_cta": "QUERO ACESSO IMEDIATO AGORA" },
-            { "tipo": "beneficios", "titulo": "Porquê escolher o nosso método?", "itens": ["Benefício forte 1", "Benefício tangível 2", "Vantagem exclusiva 3"], "sugestao_imagem_prompt": "Prompt em inglês para Midjourney (ex: cinematic photography of a professional business person...)" },
+            { "tipo": "beneficios", "titulo": "Porquê escolher o nosso método?", "itens": ["Benefício forte 1", "Benefício tangível 2", "Vantagem exclusiva 3"], "sugestao_imagem_prompt": "Prompt em inglês para gerar no Midjourney a imagem que vai acompanhar os benefícios (ex: cinematic photography of a professional business person...)" },
             { "tipo": "faq", "perguntas": [{"q": "Como recebo o acesso?", "a": "Imediatamente após a compra."}, {"q": "Tem garantia?", "a": "Sim, 7 dias de garantia incondicional."}] }
           ]
         }
 
-        Copy Original do Concorrente (Produto Antigo): "${competitorCopy}"`;
+        Dados da Página Original (Produto Antigo): "${parsedContext}"`;
         break;
 
       default:
@@ -368,14 +421,18 @@ function ClonerPage() {
         <div className="lg:col-span-4 flex flex-col gap-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg flex-1 flex flex-col min-h-[300px]">
             <label className="text-sm font-bold text-slate-400 mb-3 flex items-center gap-2 uppercase tracking-wider">
-              <Code size={16} className="text-fuchsia-500" /> 1. Cole a Estrutura do Concorrente
+              <Code size={16} className="text-fuchsia-500" /> 1. Código HTML ou Texto base
             </label>
             <textarea 
               className="w-full flex-1 bg-slate-950 border border-slate-800 focus:border-fuchsia-500/50 rounded-xl p-4 text-slate-300 text-sm outline-none resize-none transition-colors shadow-inner"
-              placeholder="Vá à página de vendas do concorrente, pressione Ctrl+A, Ctrl+C e cole todo o texto aqui..."
+              placeholder="Vá à página do concorrente, pressione Ctrl+U (Ver Código-Fonte), selecione tudo (Ctrl+A), copie e cole aqui..."
               value={competitorCopy}
               onChange={(e) => setCompetitorCopy(e.target.value)}
             ></textarea>
+            <p className="text-[10px] text-slate-500 mt-2 flex items-start gap-1">
+              <Sparkles size={12} className="shrink-0 text-fuchsia-500/50" /> 
+              O sistema extrairá as imagens e a hierarquia do HTML para uma precisão cirúrgica na criação do novo design.
+            </p>
           </div>
 
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg">
@@ -471,7 +528,7 @@ function ClonerPage() {
             {isProcessing ? (
                <div className="h-full flex flex-col items-center justify-center text-fuchsia-400/80 animate-pulse">
                   <Loader2 className="w-12 h-12 animate-spin mb-4" />
-                  <p className="font-bold text-lg">A IA está a construir a página visual...</p>
+                  <p className="font-bold text-lg">A IA está a dissecar o HTML e a construir a página visual...</p>
                   <p className="text-sm text-fuchsia-400/50 mt-2">Isto pode demorar cerca de 10 a 20 segundos.</p>
                </div>
             ) : isAiResultObject ? (
@@ -492,7 +549,7 @@ function ClonerPage() {
                <div className="h-full flex flex-col items-center justify-center text-slate-600">
                   <LayoutTemplate className="w-16 h-16 mb-4 opacity-20" />
                   <p className="text-center max-w-sm">
-                    Cole a estrutura à esquerda e clique em <strong className="text-fuchsia-500">"Criar Novo Funil"</strong> para gerar uma Landing Page visual, persuasiva e 100% à prova de plágio.
+                    Cole o código HTML da página à esquerda e clique em <strong className="text-fuchsia-500">"Criar Novo Funil"</strong> para gerar uma Landing Page visual 100% à prova de plágio.
                   </p>
                </div>
             )}
@@ -651,7 +708,7 @@ export default function App() {
 
   const callChatGPT = async (prompt, token) => {
     if (!token) throw new Error("Chave da OpenAI (ChatGPT) não configurada.");
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await fetch('[https://api.openai.com/v1/chat/completions](https://api.openai.com/v1/chat/completions)', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify({
