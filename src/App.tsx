@@ -336,30 +336,39 @@ function ClonerPage() {
         break;
 
       case 'wireframe':
-        prompt = `Atue como Web Designer. Leia esta página mapeada e crie um 'Esqueleto' (Wireframe) detalhado de como ela deve ser montada no WordPress.
-        Se foi enviada uma imagem, mapeie os blocos exatamente na ordem que aparecem visualmente (ex: Bloco 1: Fundo preto, Texto branco, Botão Verde...). 
+        prompt = `Atue como um Web Designer de Alta Conversão. Leia este mapeamento da página concorrente e crie um 'Esqueleto' (Wireframe) detalhado de como a Landing Page deve ser montada visualmente no WordPress/Elementor. Note que extraí marcações de [IMAGEM] e [TÍTULOS]. 
+        Liste os blocos em ordem lógica de vendas (ex: Bloco 1: Headline e Vídeo de Vendas. Bloco 2: Benefícios com Ícones...). 
         Base de Dados: "${parsedContext}"`;
         break;
 
       case 'adapt':
-        prompt = `Atue como Engenheiro de Funis e Web Designer. Analise a Landing Page concorrente anexada (seja por imagem ou texto/HTML). 
-        A sua tarefa é fazer a engenharia reversa visual e textual para recriar uma Landing Page INTEIRA, do zero, para um NOVO produto chamado '${newProductName}'.
-        
-        Se você estiver vendo a imagem da página, EXTRAIA o esquema de cores original, e tente extrair a estrutura exata do funil, mas mudando toda a Copy para o novo produto.
+        // PROMPT ULTIMATE: OBRIGA A IA A MAPEAR A PÁGINA INTEIRA E CRIAR BLOCOS RICOS
+        prompt = `Atue como um Engenheiro de Funis Pleno e Web Designer especialista em CRO.
+        Eu vou te enviar um Print (Imagem) longo OU o texto HTML de uma Landing Page gigantesca de altíssima conversão.
 
-        Regra CRÍTICA: Retorne APENAS um objeto JSON válido.
-        Formato exato:
+        A sua tarefa é LER A PÁGINA DE CIMA A BAIXO, fazer a engenharia reversa de todos os gatilhos mentais, blocos de imagens, depoimentos e estrutura de preço, e recriar uma Landing Page INTEIRA, do zero, para um NOVO produto chamado '${newProductName}'.
+        Para garantir 0% de plágio, MUDE A COPY, mas MANTENHA A ESTRUTURA VISUAL E LÓGICA (se a original tem muitas imagens de produto, crie um bloco de galeria. Se tem uma tabela de preço forte, crie a oferta).
+
+        Regra CRÍTICA: Você DEVE retornar APENAS um objeto JSON válido, mapeando todos os blocos na ordem em que aparecem.
+        Você PODE e DEVE usar os seguintes tipos de blocos para simular a página original:
+        
+        Use este formato JSON exato (adicione os blocos na ordem necessária):
         {
-          "paleta_cores": { "fundo": "#...", "texto": "#...", "destaque": "#...", "botao": "#...", "texto_botao": "#..." },
+          "paleta_cores": { "fundo": "#fafafa", "texto": "#1e293b", "destaque": "#059669", "botao": "#16a34a", "texto_botao": "#ffffff", "fundo_secundario": "#f1f5f9" },
           "blocos": [
-            { "tipo": "header", "headline": "...", "subheadline": "..." },
-            { "tipo": "vsl_section", "texto_apoio": "...", "botao_cta": "..." },
-            { "tipo": "beneficios", "titulo": "...", "itens": ["...", "..."], "sugestao_imagem_prompt": "Prompt Midjourney em ingles..." },
-            { "tipo": "faq", "perguntas": [{"q": "...", "a": "..."}] }
+            { "tipo": "hero", "tag_topo": "Oferta Exclusiva", "headline": "A nova super promessa focada na transformação", "subheadline": "O subtítulo que quebra objeções", "botao_cta": "QUERO COMEÇAR AGORA" },
+            { "tipo": "midia_destaque", "texto_apoio": "Veja os detalhes desta criação", "tipo_midia": "imagem", "prompt_imagem": "Prompt detalhado para Midjourney mostrando o mockup ou a pessoa usando o produto" },
+            { "tipo": "grid_imagens", "titulo": "O que você vai conseguir criar", "prompts": ["Prompt img 1", "Prompt img 2", "Prompt img 3", "Prompt img 4"] },
+            { "tipo": "beneficios", "titulo": "Por que o nosso método é diferente?", "itens": [ {"titulo": "Rápido e Prático", "texto": "Copy do beneficio 1..."}, {"titulo": "Aprovado por experts", "texto": "Copy do beneficio 2..."} ] },
+            { "tipo": "oferta_preco", "titulo": "Libere o seu Acesso Especial", "subtitulo": "Aproveite o desconto de lote 1", "preco_antigo": "R$ 197,00", "preco_novo": "R$ 67,00", "condicao_pagamento": "ou 12x de R$ 6,70", "botao_cta": "COMPRAR COM DESCONTO", "garantia": "Garantia de 7 Dias Risco Zero" },
+            { "tipo": "faq", "perguntas": [{"q": "Tem garantia?", "a": "Sim, 7 dias."}] }
           ]
         }
 
-        Dados Base (Concorrente): "${parsedContext}"`;
+        Lembre-se: Extraia as CORES REAIS da imagem que eu enviei para preencher a "paleta_cores" e gere a página o mais longa e detalhada possível, baseada no original.
+        
+        Novo Produto: "${newProductName}"
+        Dados da Página Original: "${parsedContext}"`;
         break;
 
       default:
