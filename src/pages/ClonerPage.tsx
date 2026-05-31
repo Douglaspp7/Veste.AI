@@ -14,7 +14,7 @@ export default function ClonerPage() {
   const [errorMsg, setErrorMsg] = useState('');
   const [showProductInput, setShowProductInput] = useState(false);
 
-  // Função interna para chamar a IA (mantém o componente 100% isolado do App.tsx)
+  // Função interna para chamar a IA
   const callAI = async (prompt) => {
     const provider = localStorage.getItem('adsniper_ai_provider') || 'chatgpt';
     const geminiToken = localStorage.getItem('adsniper_gemini_token');
@@ -42,7 +42,7 @@ export default function ClonerPage() {
       });
       if (!response.ok) {
           const err = await response.json().catch(() => ({}));
-          if (response.status === 429 || err.error?.type === 'insufficient_quota') throw new Error("Saldo esgotado na OpenAI (ChatGPT).");
+          if (response.status === 429 || err.error?.type === 'insufficient_quota') throw new Error("Saldo esgotado na OpenAI (ChatGPT). Por favor adicione fundos na plataforma da OpenAI.");
           throw new Error(err.error?.message || "Erro de ligação à OpenAI");
       }
       const data = await response.json();
@@ -69,7 +69,7 @@ export default function ClonerPage() {
 
   const handleAction = async (actionType) => {
     if (!competitorCopy.trim()) {
-      setErrorMsg("Por favor, cole a copy da página do seu concorrente primeiro.");
+      setErrorMsg("Por favor, cole a copy ou a página de vendas do seu concorrente primeiro.");
       return;
     }
 
@@ -87,29 +87,29 @@ export default function ClonerPage() {
 
     switch (actionType) {
       case 'analyze':
-        prompt = `Atue como um Especialista em CRO (Otimização de Conversão) e Copywriting. Analise a copy desta página de vendas concorrente. 
+        prompt = `Atue como um Especialista em CRO (Otimização de Conversão) e Copywriting. Analise a estrutura desta página de vendas concorrente. 
         Destaque de forma clara: 
-        1. O que está forte nesta copy (Gatilhos bem usados). 
-        2. Falhas e oportunidades de melhoria. 
-        3. Sugestões de novos gatilhos mentais para EU usar e ganhar deles. 
+        1. O que está forte nesta estrutura (Gatilhos mentais bem usados). 
+        2. Falhas e oportunidades de melhoria que o anunciante deixou na mesa. 
+        3. Sugestões de novos ângulos de vendas para EU usar e ganhar deles. 
         Copy do Concorrente: "${competitorCopy}"`;
         break;
       
       case 'spin':
-        prompt = `Atue como um Copywriter de Elite. Reescreva a seguinte copy de vendas para ser 100% original (anti-plágio) aos olhos do Google e Facebook, mas mantenha a mesma força persuasiva, estrutura de promessa e gatilhos mentais. Faça um 'Spin' inteligente. 
+        prompt = `Atue como um Copywriter de Elite. Reescreva a seguinte copy de vendas para ser 100% original (anti-plágio) aos olhos do Google e Facebook, mas mantenha a mesma força persuasiva, estrutura de promessa e gatilhos mentais. Faça um 'Spin' inteligente, melhorando a fluidez.
         Copy Original: "${competitorCopy}"`;
         break;
 
       case 'wireframe':
-        prompt = `Atue como um Web Designer de Alta Conversão. Leia esta copy e crie um 'Esqueleto' (Wireframe) detalhado de como a página deve ser montada no WordPress/Elementor. 
-        Liste os blocos em ordem lógica de vendas. (ex: Bloco 1: Headline e Vídeo com Fundo escuro. Bloco 2: Benefícios em 3 colunas...). 
+        prompt = `Atue como um Web Designer de Alta Conversão. Leia esta copy de vendas e crie um 'Esqueleto' (Wireframe) detalhado de como a Landing Page deve ser montada visualmente no WordPress/Elementor/Shopify. 
+        Liste os blocos em ordem lógica de vendas (ex: Bloco 1: Headline e Vídeo de Vendas (VSL). Bloco 2: Botão de Compra com Escassez. Bloco 3: 3 Benefícios em colunas...). 
         Copy base: "${competitorCopy}"`;
         break;
 
       case 'adapt':
-        prompt = `Atue como um Copywriter Mestre. Eu quero "roubar" a estrutura de persuasão desta página de vendas concorrente, mas adaptar para o meu NOVO produto chamado '${newProductName}'. 
-        Reescreva a copy inteira focando nos benefícios do meu produto, mas mantendo o tom agressivo de vendas e a arquitetura da página original. 
-        Copy do Concorrente: "${competitorCopy}"`;
+        prompt = `Atue como um Copywriter Mestre. Eu encontrei um funil vencedor de um concorrente e quero "roubar" a estrutura de persuasão dele, mas adaptar para o meu NOVO produto chamado '${newProductName}'. 
+        Reescreva a copy inteira focando nos benefícios do meu produto (invente benefícios lógicos se necessário), mas mantendo o tom agressivo de vendas, os gatilhos e a arquitetura da página original. 
+        Copy do Concorrente (Produto antigo): "${competitorCopy}"`;
         break;
 
       default:
@@ -129,7 +129,7 @@ export default function ClonerPage() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto py-8 px-4 h-full flex flex-col">
+    <div className="max-w-7xl mx-auto py-8 px-4 md:px-8 h-full flex flex-col">
       
       {/* Header do Módulo */}
       <div className="flex items-center gap-4 mb-8">
@@ -138,7 +138,7 @@ export default function ClonerPage() {
         </div>
         <div>
           <h2 className="text-3xl font-bold text-white tracking-tight">Engenheiro de Funis <span className="text-fuchsia-500">IA</span></h2>
-          <p className="text-slate-400 mt-1">Esmague a concorrência modelando as páginas de maior conversão do mercado.</p>
+          <p className="text-slate-400 mt-1">Esmague a concorrência fazendo a engenharia reversa das páginas de maior conversão do mercado.</p>
         </div>
       </div>
 
@@ -154,9 +154,9 @@ export default function ClonerPage() {
         {/* COLUNA ESQUERDA: INPUT E AÇÕES */}
         <div className="lg:col-span-5 flex flex-col gap-4">
           
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg flex-1 flex flex-col">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg flex-1 flex flex-col min-h-[300px]">
             <label className="text-sm font-bold text-slate-400 mb-3 flex items-center gap-2 uppercase tracking-wider">
-              <Code size={16} /> 1. Cole a Copy do Concorrente
+              <Code size={16} className="text-fuchsia-500" /> 1. Cole a Estrutura do Concorrente
             </label>
             <textarea 
               className="w-full flex-1 bg-slate-950 border border-slate-800 focus:border-fuchsia-500/50 rounded-xl p-4 text-slate-300 text-sm outline-none resize-none transition-colors shadow-inner"
@@ -168,23 +168,23 @@ export default function ClonerPage() {
 
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg">
             <h3 className="text-sm font-bold text-slate-400 mb-4 uppercase tracking-wider flex items-center gap-2">
-              <Sparkles size={16} className="text-fuchsia-400" /> 2. Escolha o que a IA deve fazer
+              <Sparkles size={16} className="text-fuchsia-400" /> 2. Ações de Engenharia
             </h3>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <button 
                 onClick={() => handleAction('analyze')}
                 disabled={isProcessing}
-                className="bg-slate-800 hover:bg-indigo-600/20 text-slate-300 hover:text-indigo-300 hover:border-indigo-500/50 border border-slate-700 p-4 rounded-xl flex flex-col items-center justify-center gap-2 transition-all disabled:opacity-50 group"
+                className="bg-slate-950 hover:bg-indigo-600/20 text-slate-300 hover:text-indigo-300 hover:border-indigo-500/50 border border-slate-800 p-4 rounded-xl flex flex-col items-center justify-center gap-2 transition-all disabled:opacity-50 group"
               >
                 {isProcessing && activeAction === 'analyze' ? <Loader2 className="w-6 h-6 animate-spin text-indigo-400" /> : <Search className="w-6 h-6 text-slate-500 group-hover:text-indigo-400 transition-colors" />}
-                <span className="font-bold text-sm">Analisar & Melhorar</span>
+                <span className="font-bold text-sm">Analisar Estratégia</span>
               </button>
 
               <button 
                 onClick={() => handleAction('spin')}
                 disabled={isProcessing}
-                className="bg-slate-800 hover:bg-emerald-600/20 text-slate-300 hover:text-emerald-300 hover:border-emerald-500/50 border border-slate-700 p-4 rounded-xl flex flex-col items-center justify-center gap-2 transition-all disabled:opacity-50 group"
+                className="bg-slate-950 hover:bg-emerald-600/20 text-slate-300 hover:text-emerald-300 hover:border-emerald-500/50 border border-slate-800 p-4 rounded-xl flex flex-col items-center justify-center gap-2 transition-all disabled:opacity-50 group"
               >
                 {isProcessing && activeAction === 'spin' ? <Loader2 className="w-6 h-6 animate-spin text-emerald-400" /> : <RefreshCw className="w-6 h-6 text-slate-500 group-hover:text-emerald-400 transition-colors" />}
                 <span className="font-bold text-sm">Spin Anti-Plágio</span>
@@ -193,7 +193,7 @@ export default function ClonerPage() {
               <button 
                 onClick={() => handleAction('wireframe')}
                 disabled={isProcessing}
-                className="bg-slate-800 hover:bg-amber-600/20 text-slate-300 hover:text-amber-300 hover:border-amber-500/50 border border-slate-700 p-4 rounded-xl flex flex-col items-center justify-center gap-2 transition-all disabled:opacity-50 group"
+                className="bg-slate-950 hover:bg-amber-600/20 text-slate-300 hover:text-amber-300 hover:border-amber-500/50 border border-slate-800 p-4 rounded-xl flex flex-col items-center justify-center gap-2 transition-all disabled:opacity-50 group"
               >
                 {isProcessing && activeAction === 'wireframe' ? <Loader2 className="w-6 h-6 animate-spin text-amber-400" /> : <LayoutTemplate className="w-6 h-6 text-slate-500 group-hover:text-amber-400 transition-colors" />}
                 <span className="font-bold text-sm text-center">Extrair Wireframe</span>
@@ -202,21 +202,20 @@ export default function ClonerPage() {
               <button 
                 onClick={() => handleAction('adapt')}
                 disabled={isProcessing}
-                className="bg-slate-800 hover:bg-fuchsia-600/20 text-slate-300 hover:text-fuchsia-300 hover:border-fuchsia-500/50 border border-slate-700 p-4 rounded-xl flex flex-col items-center justify-center gap-2 transition-all disabled:opacity-50 group"
+                className="bg-slate-950 hover:bg-fuchsia-600/20 text-slate-300 hover:text-fuchsia-300 hover:border-fuchsia-500/50 border border-slate-800 p-4 rounded-xl flex flex-col items-center justify-center gap-2 transition-all disabled:opacity-50 group"
               >
                 {isProcessing && activeAction === 'adapt' ? <Loader2 className="w-6 h-6 animate-spin text-fuchsia-400" /> : <ArrowRightLeft className="w-6 h-6 text-slate-500 group-hover:text-fuchsia-400 transition-colors" />}
                 <span className="font-bold text-sm text-center">Adaptar Produto</span>
               </button>
             </div>
 
-            {/* Input Extra que aparece se o utilizador clicar em Adaptar Produto */}
             {showProductInput && !isProcessing && (
               <div className="mt-4 p-4 bg-fuchsia-500/10 border border-fuchsia-500/30 rounded-xl animate-in fade-in zoom-in duration-200">
-                <label className="block text-xs font-bold text-fuchsia-300 mb-2 uppercase tracking-wider">Nome do Seu Produto</label>
+                <label className="block text-xs font-bold text-fuchsia-300 mb-2 uppercase tracking-wider">Novo Nicho ou Produto</label>
                 <div className="flex gap-2">
                   <input 
                     type="text" 
-                    placeholder="Ex: Sérum Capilar X..." 
+                    placeholder="Ex: E-book de Receitas Low Carb" 
                     className="flex-1 bg-slate-950 border border-fuchsia-500/30 rounded-lg px-3 py-2 text-white outline-none focus:border-fuchsia-500"
                     value={newProductName}
                     onChange={(e) => setNewProductName(e.target.value)}
@@ -237,14 +236,14 @@ export default function ClonerPage() {
         <div className="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl flex flex-col relative overflow-hidden">
           <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-800">
              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-               <Bot className="text-fuchsia-500" /> Resultado da Engenharia
+               <Bot className="text-fuchsia-500" /> Relatório da IA
              </h3>
              {aiResult && (
                <button 
-                 onClick={() => { navigator.clipboard.writeText(aiResult); }}
-                 className="text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors"
+                 onClick={() => { navigator.clipboard.writeText(aiResult); alert("Copiado!"); }}
+                 className="text-xs font-bold bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors"
                >
-                 <Copy size={14} /> Copiar Resultado
+                 <Copy size={14} /> Copiar
                </button>
              )}
           </div>
@@ -253,21 +252,21 @@ export default function ClonerPage() {
             {isProcessing ? (
                <div className="h-full flex flex-col items-center justify-center text-fuchsia-400/80 animate-pulse">
                   <Loader2 className="w-12 h-12 animate-spin mb-4" />
-                  <p className="font-bold text-lg">A IA está a processar os dados...</p>
+                  <p className="font-bold text-lg">A IA está a processar o Funil...</p>
                   <p className="text-sm text-fuchsia-400/50 mt-2">Isto pode demorar cerca de 10 a 20 segundos.</p>
                </div>
             ) : aiResult ? (
                <div className="text-slate-300 text-sm leading-relaxed whitespace-pre-wrap font-medium">
-                  {/* Este truque básico do React renderiza asteriscos como Bold para não quebrar o texto cru da IA */}
+                  {/* Este truque formata o texto retornado pela IA para colocar o Markdown em Negrito */}
                   {aiResult.split('**').map((chunk, index) => 
-                     index % 2 === 1 ? <strong key={index} className="text-fuchsia-300">{chunk}</strong> : chunk
+                     index % 2 === 1 ? <strong key={index} className="text-fuchsia-300 font-bold">{chunk}</strong> : chunk
                   )}
                </div>
             ) : (
                <div className="h-full flex flex-col items-center justify-center text-slate-600">
                   <LayoutTemplate className="w-16 h-16 mb-4 opacity-20" />
                   <p className="text-center max-w-sm">
-                    Cole a copy do concorrente à esquerda e clique numa das ferramentas para a IA gerar a sua nova estrutura milionária.
+                    Cole a estrutura da página de vendas concorrente à esquerda e clique numa das ferramentas para a IA gerar o seu novo funil.
                   </p>
                </div>
             )}
