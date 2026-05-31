@@ -129,11 +129,13 @@ function GeneratorPage() {
   const [subtitlePos, setSubtitlePosition] = useState('bottom'); // top, middle, bottom
   const subtitleChunksRef = useRef([]);
 
-  // NOVO: Estado para controlar o Zoom do Vídeo e Camuflagem
-  const [videoZoom, setVideoZoom] = useState(1);
-  const [camouflageMode, setCamouflageMode] = useState('none'); // none, glass, blur
+  // Estados para a Borracha Mágica (Smart Blur Eraser)
+  const [isEraserMode, setIsEraserMode] = useState(false);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [startPos, setStartPos] = useState({ x: 0, y: 0 });
+  const [eraserBox, setEraserBox] = useState(null); // {x, y, w, h} em percentagem
 
-  // NOVO: Estados para a Clonagem Visual (Prompt IA)
+  // Estados para Clonagem Visual (Prompt IA)
   const [videoPrompt, setVideoPrompt] = useState('');
   const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
 
@@ -182,14 +184,12 @@ function GeneratorPage() {
     setErrorMsg('');
 
     try {
-      // PREFERÊNCIA 1: Usar OpenAI Whisper se a chave estiver disponível
-      // Motivo: Suporta upload de arquivo nativo (FormData), aceita até 25MB fácil, não dá erro de payload.
       if (gptToken) {
         setStatusMsg("A transcrever usando Inteligência Artificial Whisper (OpenAI)...");
         const formData = new FormData();
         formData.append("file", videoFile);
         formData.append("model", "whisper-1");
-        formData.append("response_format", "text"); // Retorna apenas o texto puro
+        formData.append("response_format", "text");
 
         const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
           method: 'POST',
@@ -209,7 +209,6 @@ function GeneratorPage() {
         return;
       }
 
-      // PREFERÊNCIA 2: Fallback para Google Gemini (via Base64 - Limite de tamanho crítico)
       if (geminiToken) {
         if (videoFile.size > 6 * 1024 * 1024) {
            throw new Error("O seu vídeo é muito pesado para ser transcrito pela Gemini no navegador (Limitação de Base64). Por favor, adicione a chave da OpenAI (ChatGPT) nas Configurações para usar o Whisper, que suporta vídeos até 25MB.");
@@ -231,7 +230,6 @@ function GeneratorPage() {
         
         if (!response.ok) {
             const errData = await response.json().catch(() => ({}));
-            console.error("Gemini Error:", errData);
             throw new Error(`Falha Gemini: ${errData.error?.message || "O ficheiro é demasiado grande ou o formato não é suportado."}`);
         }
         const data = await response.json();
@@ -249,91 +247,112 @@ function GeneratorPage() {
 
   const generateVideoPrompt = async () => {
     const geminiToken = localStorage.getItem('adsniper_gemini_token');
-    if (!geminiToken) {
-      setErrorMsg("A chave da API do Google Gemini é OBRIGATÓRIA nas Configurações para analisar o vídeo visualmente.");
+    const gptToken = localStorage.getItem('adsniper_gpt_token');
+
+    if (!geminiToken && !gptToken) {
+      setErrorMsg("É OBRIGATÓRIO configurar a Chave de API do Gemini ou da OpenAI nas Configurações para analisar o vídeo visualmente.");
       return;
     }
 
-    if (!videoFile) {
-      setErrorMsg("Nenhum vídeo carregado. Faça o upload do vídeo primeiro.");
-      return;
-    }
+    if (!videoFile) return;
 
     setIsGeneratingPrompt(true);
     setErrorMsg('');
     setVideoPrompt('');
-    setStatusMsg('A iniciar o motor de Storyboard IA...');
+    setStatusMsg('A fatiar o vídeo em múltiplas cenas temporais...');
 
     try {
-      // 1. Criar um leitor de vídeo fantasma (oculto) para fatiar o vídeo sem incomodar o utilizador
-      setStatusMsg('A fatiar o vídeo em múltiplas cenas temporais...');
       const hiddenVideo = document.createElement('video');
       hiddenVideo.src = videoUrl;
       hiddenVideo.muted = true;
       hiddenVideo.playsInline = true;
       
-      // Esperar que o vídeo oculto carregue os metadados
-      await new Promise((resolve) => {
-        hiddenVideo.onloadedmetadata = resolve;
-      });
+      await new Promise((resolve) => { hiddenVideo.onloadedmetadata = resolve; });
 
       const duration = hiddenVideo.duration;
       if (!duration || isNaN(duration)) throw new Error("Não foi possível ler a duração do vídeo.");
 
-      // Calcular o número de frames (Tirar 1 frame a cada 2-3 segundos, max 10 frames para não estoirar o limite)
       const numFrames = Math.min(Math.max(Math.floor(duration / 2.5), 4), 10); 
       const interval = duration / numFrames;
       
       const canvas = document.createElement('canvas');
-      canvas.width = 480; // Baixa resolução para poupar o payload
+      canvas.width = 480;
       canvas.height = (hiddenVideo.videoHeight / hiddenVideo.videoWidth) * 480;
       const ctx = canvas.getContext('2d');
 
-      const parts = [
-        { text: "You are an Expert AI Video Prompt Engineer. I will provide you with a chronological storyboard of sequential keyframes from an ad video, along with their timestamps in seconds. Analyze the full sequence, camera movements, character actions, environment, and transitions. Generate a highly detailed, chronological cinematic prompt in ENGLISH so I can recreate this full video sequence using AI video generators (like Sora, Kling, Runway Gen-3). Break the prompt down chronologically (e.g., [0s - 3s] The scene opens with... [3s - 6s] The camera pans to...). IGNORE ALL TEXT, CAPTIONS, OR WATERMARKS on the screen. Focus strictly on the live-action or 3D animation aesthetics. Output ONLY the English prompt." }
-      ];
+      const systemPrompt = "You are an Expert AI Video Prompt Engineer. I will provide you with a chronological storyboard of sequential keyframes from an ad video, along with their timestamps in seconds. Analyze the full sequence, camera movements, character actions, environment, and transitions. Generate a highly detailed, chronological cinematic prompt in ENGLISH so I can recreate this full video sequence using AI video generators (like Sora, Kling, Runway Gen-3). Break the prompt down chronologically (e.g., [0s - 3s] The scene opens with... [3s - 6s] The camera pans to...). IGNORE ALL TEXT, CAPTIONS, OR WATERMARKS on the screen. Focus strictly on the live-action or 3D animation aesthetics. Output ONLY the English prompt.";
+
+      if (gptToken) {
+         setStatusMsg('Storyboard montado! A enviar para o GPT-4o-Mini (OpenAI)...');
+         const openAiContent = [{ type: "text", text: systemPrompt }];
+
+         for (let i = 0; i < numFrames; i++) {
+           const targetTime = i * interval;
+           hiddenVideo.currentTime = targetTime;
+           await new Promise((resolve) => {
+             hiddenVideo.addEventListener('seeked', function handler() { hiddenVideo.removeEventListener('seeked', handler); resolve(); });
+           });
+
+           ctx.drawImage(hiddenVideo, 0, 0, canvas.width, canvas.height);
+           const base64 = canvas.toDataURL('image/jpeg', 0.6);
+           openAiContent.push({ type: "text", text: `Scene at ${Math.round(targetTime)} seconds:` });
+           openAiContent.push({ type: "image_url", image_url: { url: base64 } });
+         }
+
+         const response = await fetch('https://api.openai.com/v1/chat/completions', {
+             method: 'POST',
+             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${gptToken}` },
+             body: JSON.stringify({ model: 'gpt-4o-mini', messages: [{ role: 'user', content: openAiContent }] })
+         });
+
+         if (!response.ok) throw new Error("Erro de ligação à OpenAI Vision.");
+         const data = await response.json();
+         setVideoPrompt(data.choices[0].message.content.trim());
+         return; 
+      }
+
+      setStatusMsg('Storyboard montado! A enviar para o Gemini Flash...');
+      const geminiParts = [{ text: systemPrompt }];
 
       for (let i = 0; i < numFrames; i++) {
         const targetTime = i * interval;
         hiddenVideo.currentTime = targetTime;
-        
-        // Esperar que o vídeo chegue a esse tempo exato
         await new Promise((resolve) => {
-          hiddenVideo.addEventListener('seeked', function handler() {
-             hiddenVideo.removeEventListener('seeked', handler);
-             resolve();
-          });
+          hiddenVideo.addEventListener('seeked', function handler() { hiddenVideo.removeEventListener('seeked', handler); resolve(); });
         });
 
-        // Tirar o print
         ctx.drawImage(hiddenVideo, 0, 0, canvas.width, canvas.height);
         const base64 = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
         
-        // Adicionar ao pacote do Gemini
-        parts.push({ text: `Scene at ${Math.round(targetTime)} seconds:` });
-        parts.push({ inlineData: { mimeType: "image/jpeg", data: base64 } });
+        geminiParts.push({ text: `Scene at ${Math.round(targetTime)} seconds:` });
+        geminiParts.push({ inlineData: { mimeType: "image/jpeg", data: base64 } });
       }
 
-      setStatusMsg('Storyboard montado! A enviar para o cérebro Gemini...');
-      
-      // Usar o Gemini 1.5 Flash (Super rápido para analisar lotes de imagens)
-      const endpointUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiToken}`;
-      
-      const response = await fetch(endpointUrl, {
-          method: 'POST', 
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: parts }] })
-      });
-      
-      if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          throw new Error(`Falha Gemini Vision: ${errData.error?.message || response.statusText}`);
+      const modelsToTry = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro-latest"];
+      let success = false;
+      let lastError = "";
+
+      for (const model of modelsToTry) {
+          try {
+              setStatusMsg(`A testar servidor: ${model}...`);
+              const endpointUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiToken}`;
+              const response = await fetch(endpointUrl, {
+                  method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ contents: [{ parts: geminiParts }] })
+              });
+              if (response.ok) {
+                  const data = await response.json();
+                  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                  if (text) { setVideoPrompt(text.trim()); success = true; break; }
+              } else {
+                  const errData = await response.json().catch(() => ({}));
+                  lastError = errData.error?.message || response.statusText;
+              }
+          } catch (e) { lastError = e.message; }
       }
-      
-      const data = await response.json();
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "Erro ao gerar prompt.";
-      
-      setVideoPrompt(text.trim());
+
+      if (!success) throw new Error(`Nenhum modelo Gemini aceitou o storyboard. Erro final: ${lastError}. Dica: Use a chave OpenAI (GPT-4o-Mini).`);
+
     } catch (err) {
       setErrorMsg(err.message);
     } finally {
@@ -411,9 +430,7 @@ function GeneratorPage() {
         contents: [{ parts: [{ text: newScript }] }],
         generationConfig: {
             responseModalities: ["AUDIO"],
-            speechConfig: {
-                voiceConfig: { prebuiltVoiceConfig: { voiceName: selectedVoice } }
-            }
+            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: selectedVoice } } }
         },
         model: "gemini-2.5-flash-preview-tts"
       };
@@ -424,20 +441,14 @@ function GeneratorPage() {
           body: JSON.stringify(payload)
       });
 
-      if (!response.ok) {
-        const errData = await response.json().catch(()=>({}));
-        throw new Error(`Falha na geração de áudio: ${errData.error?.message || response.statusText}`);
-      }
+      if (!response.ok) throw new Error(`Falha na geração de áudio.`);
       
       const result = await response.json();
       const part = result?.candidates?.[0]?.content?.parts?.[0];
       const audioData = part?.inlineData?.data;
-      const mimeType = part?.inlineData?.mimeType;
 
-      if (audioData && mimeType && mimeType.startsWith("audio/")) {
-          const sampleRateMatch = mimeType.match(/rate=(\d+)/);
-          const sampleRate = sampleRateMatch ? parseInt(sampleRateMatch[1], 10) : 24000;
-          
+      if (audioData) {
+          const sampleRate = 24000;
           const pcmData = base64ToArrayBuffer(audioData);
           const pcm16 = new Int16Array(pcmData);
           const wavBlob = pcmToWav(pcm16, sampleRate);
@@ -445,15 +456,11 @@ function GeneratorPage() {
           
           const words = newScript.split(/\s+/);
           const chunks = [];
-          for (let i = 0; i < words.length; i += 3) {
-             chunks.push(words.slice(i, i + 3).join(' '));
-          }
+          for (let i = 0; i < words.length; i += 3) chunks.push(words.slice(i, i + 3).join(' '));
           subtitleChunksRef.current = chunks;
           
           setGeneratedAudioUrl(audioUrl);
-          setStep(3); // Avança para o Preview
-      } else {
-          throw new Error("A IA não retornou um formato de áudio válido.");
+          setStep(3);
       }
     } catch (err) {
       setErrorMsg(err.message);
@@ -467,7 +474,6 @@ function GeneratorPage() {
       videoRef.current?.pause();
       audioRef.current?.pause();
     } else {
-      // Reinicia do zero se tiver acabado
       if (audioRef.current?.ended) {
         if(videoRef.current) videoRef.current.currentTime = 0;
         if(audioRef.current) audioRef.current.currentTime = 0;
@@ -478,7 +484,6 @@ function GeneratorPage() {
     setIsPlaying(!isPlaying);
   };
 
-  // Sincroniza estado de play/pause se o áudio acabar
   useEffect(() => {
     const audioEl = audioRef.current;
     if (audioEl) {
@@ -495,8 +500,37 @@ function GeneratorPage() {
     if (total === 0) return;
     
     let idx = Math.floor(progress * total);
-    if (idx >= total) idx = total - 1; // Proteção de limite
+    if (idx >= total) idx = total - 1;
     setCurrentSubtitle(subtitleChunksRef.current[idx]);
+  };
+
+  // Funções da Borracha Mágica (Desenhar no Video)
+  const handleEraserMouseDown = (e) => {
+    if (!isEraserMode) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    setStartPos({ x, y });
+    setIsDrawing(true);
+    setEraserBox({ x, y, w: 0, h: 0 });
+  };
+
+  const handleEraserMouseMove = (e) => {
+    if (!isEraserMode || !isDrawing) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const currentX = ((e.clientX - rect.left) / rect.width) * 100;
+    const currentY = ((e.clientY - rect.top) / rect.height) * 100;
+    
+    setEraserBox({
+      x: Math.min(startPos.x, currentX),
+      y: Math.min(startPos.y, currentY),
+      w: Math.abs(currentX - startPos.x),
+      h: Math.abs(currentY - startPos.y)
+    });
+  };
+
+  const handleEraserMouseUp = () => {
+    setIsDrawing(false);
   };
 
   return (
@@ -507,7 +541,7 @@ function GeneratorPage() {
         </div>
         <div>
           <h2 className="text-3xl font-bold text-white tracking-tight">Estúdio de <span className="text-indigo-500">Criativos IA</span></h2>
-          <p className="text-slate-400 mt-1">Reescreva, reduble e crie novos anúncios a partir dos seus vídeos vencedores.</p>
+          <p className="text-slate-400 mt-1">Reescreva, reduble e remova marcas dos seus vídeos vencedores.</p>
         </div>
       </div>
 
@@ -539,14 +573,12 @@ function GeneratorPage() {
         </div>
       )}
 
-      {/* STEP 2 & 3: TRANSCRIÇÃO, COPY E PREVIEW */}
       {step >= 2 && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 flex-1">
           
           {/* PAINEL ESQUERDO: LÓGICA E TEXTOS */}
           <div className="lg:col-span-7 flex flex-col gap-6">
             
-            {/* Bloco de Transcrição */}
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl relative overflow-hidden">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-slate-300 flex items-center gap-2">
@@ -558,24 +590,19 @@ function GeneratorPage() {
                   </button>
                 )}
               </div>
-              
               <textarea 
                 className="w-full h-32 bg-slate-950 border border-slate-800 focus:border-emerald-500/50 rounded-xl p-4 text-slate-400 text-sm outline-none resize-none transition-colors"
                 placeholder={isProcessing && !originalScript ? "Ouvindo o vídeo e escrevendo..." : "O script original do vídeo aparecerá aqui..."}
-                value={originalScript}
-                onChange={(e) => setOriginalScript(e.target.value)}
-                readOnly={isProcessing && !originalScript}
+                value={originalScript} onChange={(e) => setOriginalScript(e.target.value)} readOnly={isProcessing && !originalScript}
               ></textarea>
             </div>
 
-            {/* Bloco de Copywriting */}
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-slate-300 flex items-center gap-2">
                   <Wand2 size={18} className="text-indigo-500" /> Nova Copy Estratégica
                 </h3>
               </div>
-
               <div className="flex flex-col sm:flex-row gap-4 mb-4">
                 <select value={strategy} onChange={e => setStrategy(e.target.value)} className="flex-1 bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm font-medium text-slate-300 outline-none">
                   <option value="rewrite_same">Melhorar persuasão (Manter ideia principal)</option>
@@ -586,16 +613,12 @@ function GeneratorPage() {
                   Reescrever IA
                 </button>
               </div>
-
               <textarea 
                 className="w-full h-40 bg-slate-950 border border-slate-800 focus:border-indigo-500/50 rounded-xl p-4 text-white font-medium text-sm outline-none resize-none transition-colors leading-relaxed"
-                placeholder="A nova variação do roteiro aparecerá aqui. Você pode editar manualmente."
-                value={newScript}
-                onChange={(e) => setNewScript(e.target.value)}
+                placeholder="A nova variação do roteiro aparecerá aqui..." value={newScript} onChange={(e) => setNewScript(e.target.value)}
               ></textarea>
             </div>
 
-            {/* Bloco de Voz e Áudio */}
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
               <h3 className="font-bold text-slate-300 flex items-center gap-2 mb-4">
                 <FileAudio size={18} className="text-fuchsia-500" /> Voz e Redublagem
@@ -613,39 +636,25 @@ function GeneratorPage() {
               </button>
             </div>
 
-            {/* NOVO: Bloco de Clonagem Visual (Prompt de Vídeo) */}
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-slate-300 flex items-center gap-2">
-                  <MonitorPlay size={18} className="text-blue-500" /> Clonagem Visual (Sora / Luma / Kling)
+                  <MonitorPlay size={18} className="text-blue-500" /> Clonagem Visual (Storyboard)
                 </h3>
               </div>
               <p className="text-xs text-slate-400 mb-4 leading-relaxed">
-                Não consegue esconder a legenda antiga? A IA "assiste" ao seu vídeo e escreve um Prompt Cinematográfico perfeito em Inglês para você recriar o fundo do zero numa IA Geradora de Vídeos.
+                A IA "fatia" o seu vídeo num Storyboard e escreve um Prompt Cinematográfico cronológico em Inglês para você recriar o fundo limpo em ferramentas como Sora ou Kling AI.
               </p>
-              
               {!videoPrompt ? (
                 <button onClick={generateVideoPrompt} disabled={isGeneratingPrompt} className="w-full bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/30 p-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-50">
                   {isGeneratingPrompt ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />} 
-                  {isGeneratingPrompt ? "A analisar cena e cinematografia..." : "Extrair Prompt de Vídeo"}
+                  {isGeneratingPrompt ? statusMsg || "A analisar frames..." : "Extrair Prompt de Vídeo"}
                 </button>
               ) : (
                 <div className="relative animate-in fade-in zoom-in duration-300">
-                  <textarea 
-                    className="w-full h-32 bg-slate-950 border border-slate-800 focus:border-blue-500/50 rounded-xl p-4 pr-12 text-slate-300 text-sm outline-none resize-none transition-colors mb-2 leading-relaxed"
-                    value={videoPrompt}
-                    readOnly
-                  ></textarea>
-                  <button 
-                    onClick={() => { navigator.clipboard.writeText(videoPrompt); alert('Prompt copiado! Cole no Kling AI, Luma ou Runway.'); }} 
-                    className="absolute top-3 right-3 bg-slate-800 hover:bg-blue-600 text-slate-300 hover:text-white p-2 rounded-lg transition-colors shadow-lg"
-                    title="Copiar Prompt"
-                  >
-                    <Copy size={16} />
-                  </button>
-                  <button onClick={() => setVideoPrompt('')} className="text-xs text-slate-500 hover:text-white font-bold w-full text-center py-1 transition-colors">
-                    Limpar e Gerar Novo Prompt
-                  </button>
+                  <textarea className="w-full h-32 bg-slate-950 border border-slate-800 focus:border-blue-500/50 rounded-xl p-4 pr-12 text-slate-300 text-sm outline-none resize-none transition-colors mb-2 leading-relaxed" value={videoPrompt} readOnly></textarea>
+                  <button onClick={() => { navigator.clipboard.writeText(videoPrompt); alert('Prompt copiado!'); }} className="absolute top-3 right-3 bg-slate-800 hover:bg-blue-600 text-slate-300 hover:text-white p-2 rounded-lg transition-colors shadow-lg" title="Copiar Prompt"><Copy size={16} /></button>
+                  <button onClick={() => setVideoPrompt('')} className="text-xs text-slate-500 hover:text-white font-bold w-full text-center py-1 transition-colors">Limpar e Gerar Novo</button>
                 </div>
               )}
             </div>
@@ -655,148 +664,125 @@ function GeneratorPage() {
           {/* PAINEL DIREITO: PREVIEW DO VÍDEO (ESTÚDIO) */}
           <div className="lg:col-span-5 flex flex-col">
              <div className="sticky top-8 bg-slate-900 border border-slate-800 rounded-3xl p-2 shadow-2xl flex flex-col overflow-hidden">
-                <div className="px-4 py-3 flex items-center justify-between border-b border-slate-800/50">
-                  <span className="font-bold text-white text-sm flex items-center gap-2"><PlayCircle size={16} className="text-indigo-400"/> Player de Preview</span>
+                
+                {/* TOOLBAR SUPERIOR DO PLAYER */}
+                <div className="px-4 py-3 flex flex-wrap items-center justify-between border-b border-slate-800/50 gap-2">
+                  <span className="font-bold text-white text-sm flex items-center gap-2"><PlayCircle size={16} className="text-indigo-400"/> Preview</span>
+                  
                   {step === 3 && (
-                    <div className="flex gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 shadow-inner">
-                      {['top', 'middle', 'bottom'].map(pos => (
-                         <button 
-                           key={pos} 
-                           onClick={() => setSubtitlePosition(pos)} 
-                           title={`Mover legenda para ${pos === 'top' ? 'o topo' : pos === 'middle' ? 'o meio' : 'o fundo'}`}
-                           className={`px-2.5 py-1 rounded text-[9px] uppercase font-bold transition-colors ${subtitlePos === pos ? 'bg-indigo-500 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}
-                         >
-                           {pos === 'top' ? 'Topo' : pos === 'middle' ? 'Meio' : 'Fundo'}
-                         </button>
-                      ))}
+                    <div className="flex gap-2">
+                      <button 
+                         onClick={() => { setIsEraserMode(!isEraserMode); if(isEraserMode) setEraserBox(null); }} 
+                         className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all border ${isEraserMode ? 'bg-rose-500/20 text-rose-400 border-rose-500/50' : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'}`}
+                         title="Desenhar um borrão para apagar a legenda antiga"
+                      >
+                         <PenTool size={12} /> {isEraserMode ? 'Modo Borracha ON' : 'Borracha Mágica'}
+                      </button>
+                      <div className="flex gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
+                        {['top', 'middle', 'bottom'].map(pos => (
+                           <button 
+                             key={pos} onClick={() => setSubtitlePosition(pos)} 
+                             className={`px-2 py-0.5 rounded text-[9px] uppercase font-bold transition-colors ${subtitlePos === pos ? 'bg-indigo-500 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}
+                           >
+                             {pos === 'top' ? 'Topo' : pos === 'middle' ? 'Meio' : 'Fundo'}
+                           </button>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
 
-                {/* PAINEL DE EDIÇÃO (ZOOM E CAMUFLAGEM) */}
-                {step === 3 && (
-                  <div className="px-4 py-3 bg-slate-950/80 border-b border-slate-800/50 flex flex-col gap-3">
-                    
-                    {/* Zoom Control */}
-                    <div className="flex items-center gap-3">
-                      <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1 w-16">
-                        <Search size={12} /> Cortar:
-                      </span>
-                      <input 
-                        type="range" 
-                        min="1" 
-                        max="1.5" 
-                        step="0.05" 
-                        value={videoZoom} 
-                        onChange={(e) => setVideoZoom(parseFloat(e.target.value))} 
-                        disabled={camouflageMode === 'blur'}
-                        className="flex-1 accent-indigo-500 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer disabled:opacity-50"
-                      />
-                      <span className="text-[10px] text-slate-500 w-8 text-right font-mono">{Math.round(videoZoom * 100)}%</span>
-                    </div>
-
-                    {/* Camouflage Control */}
-                    <div className="flex items-center gap-3">
-                      <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1 w-16">
-                        <Layers size={12} /> Ocultar:
-                      </span>
-                      <div className="flex flex-1 gap-1 bg-slate-900 p-1 rounded-lg border border-slate-800">
-                        <button onClick={() => setCamouflageMode('none')} className={`flex-1 py-1 rounded text-[9px] uppercase tracking-wider font-bold transition-all ${camouflageMode === 'none' ? 'bg-indigo-500 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}>Off</button>
-                        <button onClick={() => setCamouflageMode('glass')} className={`flex-1 py-1 rounded text-[9px] uppercase tracking-wider font-bold transition-all ${camouflageMode === 'glass' ? 'bg-indigo-500 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}>Faixa Central</button>
-                        <button onClick={() => setCamouflageMode('blur')} className={`flex-1 py-1 rounded text-[9px] uppercase tracking-wider font-bold transition-all ${camouflageMode === 'blur' ? 'bg-indigo-500 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}>Cinematic</button>
-                      </div>
-                    </div>
-
-                  </div>
-                )}
-
-                <div className="relative aspect-[9/16] bg-black rounded-2xl overflow-hidden mx-auto w-full max-w-[320px] shadow-inner mt-4 group border border-white/5">
-                  {/* VÍDEO ORIGINAL COM TRATAMENTOS VISUAIS */}
-                  <video 
-                    ref={videoRef} 
-                    src={videoUrl} 
-                    muted 
-                    playsInline 
-                    loop
-                    className={`absolute inset-0 w-full h-full object-cover transition-all duration-300 origin-center ${camouflageMode === 'blur' ? 'blur-[15px] brightness-50 scale-110' : ''}`}
-                    style={{ transform: camouflageMode !== 'blur' ? `scale(${videoZoom})` : undefined }}
-                  />
-                  
-                  {/* EFEITO DE FAIXA FOSCA (GLASSMORPHISM) PARA LEGENDA CENTRAL */}
-                  {camouflageMode === 'glass' && (
-                    <div className="absolute top-1/2 -translate-y-1/2 inset-x-0 h-[35%] bg-black/30 backdrop-blur-md z-10 border-y border-white/10 flex items-center justify-center shadow-[0_0_30px_rgba(0,0,0,0.5)]">
+                <div className="relative aspect-[9/16] bg-black rounded-2xl overflow-hidden mx-auto w-full max-w-[320px] shadow-inner mt-4 border border-white/5"
+                     onMouseDown={handleEraserMouseDown}
+                     onMouseMove={handleEraserMouseMove}
+                     onMouseUp={handleEraserMouseUp}
+                     onMouseLeave={handleEraserMouseUp}
+                     style={{ cursor: isEraserMode ? 'crosshair' : 'default' }}
+                >
+                  {/* DICA DE COMO USAR A BORRACHA */}
+                  {isEraserMode && !eraserBox && !isPlaying && (
+                    <div className="absolute inset-0 bg-black/60 z-30 flex items-center justify-center p-6 text-center backdrop-blur-sm pointer-events-none">
+                       <p className="text-white font-bold animate-pulse"><PenTool className="inline mr-2 mb-1" /> Clique e arraste sobre a legenda velha para apagá-la.</p>
                     </div>
                   )}
 
-                  {/* ÁUDIO GERADO PELA IA */}
+                  {/* VÍDEO ORIGINAL */}
+                  <video ref={videoRef} src={videoUrl} muted playsInline loop className="absolute inset-0 w-full h-full object-cover" />
+                  
+                  {/* CAIXA DA BORRACHA MÁGICA (SMART BLUR) */}
+                  {eraserBox && eraserBox.w > 0 && (
+                    <div 
+                      className="absolute z-20 pointer-events-none border border-white/20"
+                      style={{
+                        left: `${eraserBox.x}%`,
+                        top: `${eraserBox.y}%`,
+                        width: `${eraserBox.w}%`,
+                        height: `${eraserBox.h}%`,
+                        backdropFilter: 'blur(20px) brightness(1.2)',
+                        backgroundColor: 'rgba(0,0,0,0.1)',
+                        borderRadius: '8px'
+                      }}
+                    />
+                  )}
+
                   {generatedAudioUrl && <audio ref={audioRef} src={generatedAudioUrl} onTimeUpdate={handleAudioTimeUpdate} />}
 
-                  {/* OVERLAY DE LEGENDAS DINÂMICAS TIKTOK STYLE */}
+                  {/* NOVA LEGENDA DINÂMICA TIKTOK STYLE */}
                   {step === 3 && isPlaying && currentSubtitle && (
-                    <div className={`absolute inset-x-0 p-4 flex justify-center pointer-events-none transition-all duration-75 z-20 ${
+                    <div className={`absolute inset-x-0 p-4 flex justify-center pointer-events-none transition-all duration-75 z-40 ${
                        subtitlePos === 'top' ? 'top-16' : 
                        subtitlePos === 'middle' ? 'top-1/2 -translate-y-1/2' : 
                        'bottom-24'
                     }`}>
-                       {/* O backdrop-blur esconde a legenda antiga, o texto saltado atrai atenção */}
-                       <div className="bg-black/40 backdrop-blur-[6px] px-5 py-2.5 rounded-2xl border border-white/10 text-center shadow-[0_0_20px_rgba(0,0,0,0.5)] transform hover:scale-105 transition-transform max-w-[95%]">
+                       <div className="bg-black/20 backdrop-blur-sm px-5 py-2.5 rounded-2xl text-center transform hover:scale-105 transition-transform max-w-[95%]">
                           <p className="text-yellow-400 font-black text-2xl md:text-3xl uppercase tracking-wider leading-tight" 
-                             style={{ 
-                               textShadow: '2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 0 5px 15px rgba(0,0,0,0.8)', 
-                               fontFamily: 'Impact, system-ui, sans-serif' 
-                             }}>
+                             style={{ textShadow: '2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 0 5px 15px rgba(0,0,0,0.8)', fontFamily: 'Impact, system-ui, sans-serif' }}>
                             {currentSubtitle}
                           </p>
                        </div>
                     </div>
                   )}
 
-                  {/* OVERLAY DE ESTADO INICIAL/PAUSADO */}
                   {!isPlaying && (
-                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center backdrop-blur-[2px]">
+                    <div className="absolute inset-0 bg-black/30 flex items-center justify-center pointer-events-none">
                       {step < 3 ? (
-                        <div className="text-center p-6">
-                           <LayoutTemplate className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-                           <p className="text-sm font-bold text-slate-400">Preview Indisponível</p>
+                        <div className="text-center p-6 bg-black/40 backdrop-blur-md rounded-2xl">
+                           <LayoutTemplate className="w-12 h-12 text-slate-400 mx-auto mb-3" />
+                           <p className="text-sm font-bold text-slate-300">Preview Indisponível</p>
                            <p className="text-xs text-slate-500 mt-1">Gere a narração para ativar.</p>
                         </div>
-                      ) : (
-                        <button onClick={togglePlayback} className="w-16 h-16 bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-full flex items-center justify-center transition-transform hover:scale-110 border border-white/30">
+                      ) : !isEraserMode && (
+                        <button onClick={togglePlayback} className="w-16 h-16 bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-full flex items-center justify-center transition-transform hover:scale-110 border border-white/30 pointer-events-auto shadow-[0_0_30px_rgba(0,0,0,0.5)]">
                           <Play className="w-8 h-8 text-white ml-1" fill="currentColor" />
                         </button>
                       )}
                     </div>
                   )}
 
-                  {/* CONTROLES DO PLAYER (Aparecem no hover se estiver tocando) */}
+                  {/* CONTROLES DO PLAYER */}
                   {step === 3 && isPlaying && (
-                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/50 backdrop-blur-md border border-white/20 rounded-full px-4 py-2 flex items-center gap-4 opacity-0 group-hover:opacity-100 transition-opacity z-30">
+                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-md border border-white/20 rounded-full px-4 py-2 flex items-center gap-4 opacity-0 hover:opacity-100 transition-opacity z-50 pointer-events-auto">
                        <button onClick={togglePlayback} className="text-white hover:text-indigo-400 transition-colors">
                           <Pause size={20} fill="currentColor" />
                        </button>
-                       <div className="w-px h-4 bg-white/20"></div>
-                       <Volume2 size={18} className="text-white/70" />
                     </div>
                   )}
                 </div>
 
                 {/* BOTÕES DE EXPORTAÇÃO */}
                 {step === 3 && (
-                  <div className="mt-6 p-4">
+                  <div className="mt-6 p-4 border-t border-slate-800/50">
                     <p className="text-[10px] text-slate-500 text-center mb-3">
-                       {camouflageMode === 'none' ? `Ajuste no seu editor: Aplique ${Math.round(videoZoom * 100)}% de zoom.` : 
-                        camouflageMode === 'glass' ? `Ajuste no seu editor: Adicione um efeito de desfoque central.` : 
-                        `Ajuste no seu editor: Desfoque o vídeo original a 100%.`}
+                       As edições (borrão e legenda) são apenas de preview para validar o formato! No seu editor final (CapCut), replique o desfoque onde desenhou a borracha mágica.
                     </p>
-                    <a href={generatedAudioUrl} download="AdSniper_Voz_IA.wav" className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm py-3 rounded-xl flex items-center justify-center gap-2 transition-colors border border-slate-700 mb-2">
+                    <a href={generatedAudioUrl} download="AdSniper_Voz_IA.wav" className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm py-3 rounded-xl flex items-center justify-center gap-2 transition-colors border border-indigo-500 mb-2 shadow-[0_0_15px_rgba(99,102,241,0.2)]">
                       <Download size={16} /> Baixar Áudio da Narração (.wav)
                     </a>
-                    {/* NOVO BOTÃO DE DOWNLOAD DO VÍDEO ORIGINAL PARA FACILITAR */}
-                    <a href={videoUrl} download="AdSniper_Video_Original.mp4" className="w-full bg-indigo-900/30 hover:bg-indigo-900/50 text-indigo-400 font-bold text-sm py-3 rounded-xl flex items-center justify-center gap-2 transition-colors border border-indigo-500/30">
+                    <a href={videoUrl} download="AdSniper_Video_Original.mp4" className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm py-3 rounded-xl flex items-center justify-center gap-2 transition-colors border border-slate-700">
                       <Video size={16} /> Baixar Vídeo Original (.mp4)
                     </a>
-                    <button onClick={() => { setStep(1); setVideoFile(null); setGeneratedAudioUrl(''); setOriginalScript(''); setNewScript(''); setVideoZoom(1); }} className="w-full mt-3 text-slate-500 hover:text-white text-xs font-bold py-2 transition-colors">
-                      Criar Novo Vídeo
+                    <button onClick={() => { setStep(1); setVideoFile(null); setGeneratedAudioUrl(''); setOriginalScript(''); setNewScript(''); setEraserBox(null); setIsEraserMode(false); }} className="w-full mt-3 text-slate-500 hover:text-white text-xs font-bold py-2 transition-colors">
+                      Limpar e Criar Novo Vídeo
                     </button>
                   </div>
                 )}
