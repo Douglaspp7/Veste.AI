@@ -216,7 +216,7 @@ function GeneratorPage() {
         }
 
         setStatusMsg("A transcrever usando Inteligência Artificial Google Gemini...");
-        const endpointUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${geminiToken}`;
+        const endpointUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiToken}`;
         
         const parts = [
           { text: "Transcreva o áudio deste vídeo com precisão. Retorne APENAS o texto falado, sem marcações ou comentários adicionais." },
@@ -264,7 +264,7 @@ function GeneratorPage() {
          throw new Error("O seu vídeo é muito pesado para ser analisado visualmente pela Gemini no navegador (Limitação de Base64). Para gerar prompt visual, o vídeo não pode passar de 6MB. Tente um trecho menor.");
       }
 
-      const endpointUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${geminiToken}`;
+      const endpointUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiToken}`;
       
       const aiPrompt = "You are an expert AI Video Prompt Engineer. Watch this video carefully. Generate a highly detailed, cinematic prompt in ENGLISH so I can recreate this exact visual scene using AI video generators like Runway Gen-3, Kling, or Sora. Describe the subject, their appearance, clothing, actions, the environment, lighting, camera angle, and camera movement. DO NOT describe any text, captions, graphics, or watermarks on the screen. Focus ONLY on the live-action or 3D animation visuals. Keep it cohesive and highly descriptive. Output ONLY the English prompt, ready to copy-paste.";
 
