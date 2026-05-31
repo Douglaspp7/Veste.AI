@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { 
   Copy, Loader2, Sparkles, Search, RefreshCw, 
-  LayoutTemplate, ArrowRightLeft, AlertCircle, CheckCircle2, Code, Bot 
+  LayoutTemplate, ArrowRightLeft, AlertCircle, Code, Bot 
 } from 'lucide-react';
 
 export default function ClonerPage() {
