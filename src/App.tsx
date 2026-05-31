@@ -124,6 +124,11 @@ function GeneratorPage() {
   const audioRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
 
+  // NOVO: Estados para Legendas Dinâmicas (TikTok Style)
+  const [currentSubtitle, setCurrentSubtitle] = useState('');
+  const [subtitlePos, setSubtitlePosition] = useState('bottom'); // top, middle, bottom
+  const subtitleChunksRef = useRef([]);
+
   // Vozes disponíveis no Gemini TTS
   const voices = [
     { id: 'Puck', name: 'Puck (Animado/Upbeat)', icon: '🎉' },
@@ -335,6 +340,13 @@ function GeneratorPage() {
           const wavBlob = pcmToWav(pcm16, sampleRate);
           const audioUrl = URL.createObjectURL(wavBlob);
           
+          const words = newScript.split(/\s+/);
+          const chunks = [];
+          for (let i = 0; i < words.length; i += 3) {
+             chunks.push(words.slice(i, i + 3).join(' '));
+          }
+          subtitleChunksRef.current = chunks;
+          
           setGeneratedAudioUrl(audioUrl);
           setStep(3); // Avança para o Preview
       } else {
@@ -372,6 +384,17 @@ function GeneratorPage() {
       return () => audioEl.removeEventListener('ended', handleEnded);
     }
   }, [generatedAudioUrl]);
+
+  const handleAudioTimeUpdate = () => {
+    if (!audioRef.current || isNaN(audioRef.current.duration)) return;
+    const progress = audioRef.current.currentTime / audioRef.current.duration;
+    const total = subtitleChunksRef.current.length;
+    if (total === 0) return;
+    
+    let idx = Math.floor(progress * total);
+    if (idx >= total) idx = total - 1; // Proteção de limite
+    setCurrentSubtitle(subtitleChunksRef.current[idx]);
+  };
 
   return (
     <div className="max-w-7xl mx-auto py-8 px-4 md:px-8 h-full flex flex-col overflow-y-auto">
@@ -495,7 +518,18 @@ function GeneratorPage() {
                 <div className="px-4 py-3 flex items-center justify-between border-b border-slate-800/50">
                   <span className="font-bold text-white text-sm flex items-center gap-2"><PlayCircle size={16} className="text-indigo-400"/> Player de Preview</span>
                   {step === 3 && (
-                    <span className="bg-emerald-500/10 text-emerald-400 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider">Pronto</span>
+                    <div className="flex gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 shadow-inner">
+                      {['top', 'middle', 'bottom'].map(pos => (
+                         <button 
+                           key={pos} 
+                           onClick={() => setSubtitlePosition(pos)} 
+                           title={`Mover legenda para ${pos === 'top' ? 'o topo' : pos === 'middle' ? 'o meio' : 'o fundo'}`}
+                           className={`px-2.5 py-1 rounded text-[9px] uppercase font-bold transition-colors ${subtitlePos === pos ? 'bg-indigo-500 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}
+                         >
+                           {pos === 'top' ? 'Topo' : pos === 'middle' ? 'Meio' : 'Fundo'}
+                         </button>
+                      ))}
+                    </div>
                   )}
                 </div>
 
@@ -511,14 +545,23 @@ function GeneratorPage() {
                   />
                   
                   {/* ÁUDIO GERADO PELA IA */}
-                  {generatedAudioUrl && <audio ref={audioRef} src={generatedAudioUrl} />}
+                  {generatedAudioUrl && <audio ref={audioRef} src={generatedAudioUrl} onTimeUpdate={handleAudioTimeUpdate} />}
 
-                  {/* OVERLAY DE LEGENDAS FAKES (Apenas no step 3) */}
-                  {step === 3 && isPlaying && (
-                    <div className="absolute inset-x-0 bottom-24 p-4 flex justify-center pointer-events-none">
-                       <div className="bg-black/60 backdrop-blur-sm border border-white/10 px-4 py-3 rounded-xl max-w-[90%] text-center">
-                          <p className="text-white font-bold text-sm leading-tight shadow-black">
-                            {newScript.substring(0, 80)}...
+                  {/* OVERLAY DE LEGENDAS DINÂMICAS TIKTOK STYLE */}
+                  {step === 3 && isPlaying && currentSubtitle && (
+                    <div className={`absolute inset-x-0 p-4 flex justify-center pointer-events-none transition-all duration-75 z-20 ${
+                       subtitlePos === 'top' ? 'top-16' : 
+                       subtitlePos === 'middle' ? 'top-1/2 -translate-y-1/2' : 
+                       'bottom-24'
+                    }`}>
+                       {/* O backdrop-blur esconde a legenda antiga, o texto saltado atrai atenção */}
+                       <div className="bg-black/40 backdrop-blur-[6px] px-5 py-2.5 rounded-2xl border border-white/10 text-center shadow-[0_0_20px_rgba(0,0,0,0.5)] transform hover:scale-105 transition-transform max-w-[95%]">
+                          <p className="text-yellow-400 font-black text-2xl md:text-3xl uppercase tracking-wider leading-tight" 
+                             style={{ 
+                               textShadow: '2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 0 5px 15px rgba(0,0,0,0.8)', 
+                               fontFamily: 'Impact, system-ui, sans-serif' 
+                             }}>
+                            {currentSubtitle}
                           </p>
                        </div>
                     </div>
