@@ -6,7 +6,8 @@ import {
   AlertCircle, Code, ExternalLink, Calendar, ThumbsUp, Layers, Sparkles, Bot,
   Heart, Filter, Video, Bookmark, DollarSign, Clock, CheckCircle, Flame, Library,
   ArrowUpDown, ShieldAlert, SplitSquareHorizontal, Rocket, Trophy, PenTool, Copy,
-  Search, RefreshCw, LayoutTemplate, ArrowRightLeft, MonitorPlay, Check, HelpCircle, Upload
+  Search, RefreshCw, LayoutTemplate, ArrowRightLeft, MonitorPlay, Check, HelpCircle, Upload,
+  Download
 } from 'lucide-react';
 
 // ============================================================================
@@ -64,211 +65,15 @@ function GeneratorPage() {
   );
 }
 
-// NOVO COMPONENTE: Visualizador de Landing Page Gerada (100% Blindado contra Crash)
-const VisualLandingPage = ({ data }) => {
-  // PROTEÇÃO 1: Garantir que temos um objeto válido e não texto solto
-  if (!data || typeof data !== 'object') return <div className="p-8 text-slate-400 text-center">Nenhum dado válido recebido.</div>;
-  
-  // PROTEÇÃO 2: Garantir que blocos é um array real
-  const blocos = Array.isArray(data.blocos) ? data.blocos : [];
-  if (blocos.length === 0) return <div className="p-8 text-slate-400 text-center">A IA gerou a página, mas não estruturou os blocos corretamente. Tente clicar em "Gerar" novamente.</div>;
-  
-  // PROTEÇÃO 3: Garantir cores padrão seguras caso a IA não envie as cores corretamente
-  const theme = (typeof data.paleta_cores === 'object' && data.paleta_cores !== null) 
-    ? { ...data.paleta_cores, fundo_secundario: data.paleta_cores.fundo_secundario || data.paleta_cores.fundo || "#f8fafc" }
-    : { fundo: "#ffffff", texto: "#1e293b", destaque: "#4f46e5", botao: "#10b981", texto_botao: "#ffffff", fundo_secundario: "#f8fafc" };
-
-  return (
-    <div className="w-full rounded-xl overflow-hidden border border-slate-700 shadow-2xl flex flex-col h-full bg-slate-900">
-      <div className="bg-slate-800 px-4 py-3 flex gap-2 items-center border-b border-slate-700 shrink-0">
-        <div className="flex gap-2">
-          <div className="w-3 h-3 rounded-full bg-rose-500"></div>
-          <div className="w-3 h-3 rounded-full bg-amber-500"></div>
-          <div className="w-3 h-3 rounded-full bg-emerald-500"></div>
-        </div>
-        <div className="ml-4 flex-1">
-          <div className="bg-slate-900 rounded text-xs text-slate-400 px-3 py-1 flex items-center gap-2 w-full max-w-sm mx-auto">
-            <Lock size={12} className="text-emerald-500" />
-            [https://oseunovofunil.com](https://oseunovofunil.com)
-          </div>
-        </div>
-      </div>
-
-      <div className="overflow-y-auto flex-1 custom-scrollbar" style={{ backgroundColor: theme.fundo || '#ffffff', color: theme.texto || '#000000' }}>
-        {blocos.map((bloco, index) => {
-          // PROTEÇÃO CONTRA BLOCOS VAZIOS OU MAL FORMADOS PELA IA
-          if (!bloco || typeof bloco !== 'object') return null;
-
-          if (bloco.tipo === 'hero' || bloco.tipo === 'header') return (
-            <div key={index} className="px-6 py-16 text-center flex flex-col items-center justify-center border-b border-black/5" style={{ backgroundColor: theme.fundo }}>
-              {bloco.tag_topo && <span className="mb-4 px-3 py-1 text-xs font-bold rounded-full uppercase tracking-wider" style={{ backgroundColor: (theme.destaque || '#4f46e5') + '20', color: theme.destaque }}>{bloco.tag_topo}</span>}
-              <h1 className="text-4xl sm:text-5xl font-black mb-6 max-w-4xl leading-tight mx-auto" style={{ color: theme.destaque }}>
-                {bloco.headline || "Promessa Principal Aqui"}
-              </h1>
-              <p className="text-xl opacity-80 max-w-2xl mx-auto mb-8">
-                {bloco.subheadline || "Subtítulo de apoio não gerado."}
-              </p>
-              {bloco.botao_cta && (
-                 <button className="px-10 py-5 rounded-2xl font-black text-xl shadow-xl transition-transform hover:scale-105 w-full max-w-md uppercase tracking-wider" style={{ backgroundColor: theme.botao, color: theme.texto_botao }}>
-                    {bloco.botao_cta}
-                 </button>
-              )}
-            </div>
-          );
-
-          if (bloco.tipo === 'midia_destaque' || bloco.tipo === 'vsl_section') return (
-            <div key={index} className="px-6 py-12 flex flex-col items-center border-b border-black/5" style={{ backgroundColor: theme.fundo_secundario }}>
-              {bloco.texto_apoio && <p className="mb-6 font-medium text-center text-lg max-w-2xl">{bloco.texto_apoio}</p>}
-              
-              <div className="w-full max-w-3xl aspect-video bg-slate-800 rounded-2xl shadow-2xl flex flex-col items-center justify-center relative overflow-hidden mb-8 border border-white/10 p-6 text-center">
-                <MonitorPlay className="w-16 h-16 text-slate-500 mb-4" />
-                <p className="text-slate-400 text-sm font-medium uppercase tracking-wider mb-2">Espaço para Vídeo ou Imagem Principal</p>
-                {bloco.prompt_imagem && (
-                   <p className="text-xs text-slate-500 italic bg-slate-900/50 p-3 rounded-lg border border-slate-700/50 max-w-lg">Prompt IA: "{bloco.prompt_imagem}"</p>
-                )}
-              </div>
-
-              {bloco.botao_cta && (
-                <button className="px-10 py-5 rounded-2xl font-black text-xl shadow-xl transition-transform hover:scale-105 w-full max-w-md uppercase tracking-wider" style={{ backgroundColor: theme.botao, color: theme.texto_botao }}>
-                  {bloco.botao_cta}
-                </button>
-              )}
-            </div>
-          );
-
-          if (bloco.tipo === 'grid_imagens') {
-             // PROTEÇÃO: Garantir que prompts é realmente uma lista
-             const prompts = Array.isArray(bloco.prompts) ? bloco.prompts : (typeof bloco.prompts === 'string' ? [bloco.prompts] : []);
-             if (prompts.length === 0) return null;
-
-             return (
-             <div key={index} className="px-6 py-16 flex flex-col items-center border-b border-black/5" style={{ backgroundColor: theme.fundo }}>
-                {bloco.titulo && <h2 className="text-3xl font-black mb-10 text-center" style={{ color: theme.destaque }}>{bloco.titulo}</h2>}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full max-w-5xl">
-                   {prompts.map((prompt, i) => (
-                      <div key={i} className="aspect-square bg-slate-200 rounded-xl flex flex-col items-center justify-center p-4 text-center border-2 border-dashed border-slate-300">
-                         <ImageIcon className="w-8 h-8 text-slate-400 mb-2 shrink-0" />
-                         <p className="text-[10px] text-slate-600 italic line-clamp-4">{prompt}</p>
-                      </div>
-                   ))}
-                </div>
-             </div>
-          )};
-
-          if (bloco.tipo === 'beneficios') {
-            // PROTEÇÃO: Garantir que itens é uma lista e não quebra a tela
-            const itens = Array.isArray(bloco.itens) ? bloco.itens : (typeof bloco.itens === 'string' ? [bloco.itens] : []);
-            return (
-            <div key={index} className="px-6 py-16 border-b border-black/5" style={{ backgroundColor: theme.fundo_secundario }}>
-              <div className="max-w-5xl mx-auto flex flex-col lg:flex-row gap-12 items-center">
-                <div className="flex-1 w-full relative">
-                  <div className="aspect-[4/5] bg-slate-200 rounded-3xl flex flex-col items-center justify-center p-8 text-center border border-slate-300 shadow-inner">
-                    <ImageIcon className="w-16 h-16 text-slate-400 mb-4" />
-                    <p className="text-sm text-slate-500 font-bold mb-2 uppercase tracking-wider">Prompt de Imagem (Contexto):</p>
-                    <p className="text-sm text-slate-700 italic select-all bg-white/80 p-4 rounded-xl border border-slate-200 shadow-sm">
-                      "{bloco.sugestao_imagem_prompt || "Imagem ilustrativa dos benefícios"}"
-                    </p>
-                  </div>
-                </div>
-                <div className="flex-1 space-y-6 w-full">
-                  {bloco.titulo && <h2 className="text-3xl font-black mb-8" style={{ color: theme.destaque }}>{bloco.titulo}</h2>}
-                  {itens.map((item, i) => {
-                    const isObj = typeof item === 'object' && item !== null;
-                    const titulo = isObj ? item.titulo : item;
-                    const texto = isObj ? item.texto : null;
-
-                    return (
-                      <div key={i} className="flex items-start gap-4 bg-white/60 p-5 rounded-2xl shadow-sm border border-black/5 hover:shadow-md transition-shadow">
-                        <div className="p-2 rounded-full mt-1" style={{ backgroundColor: (theme.botao || '#10b981') + '20' }}>
-                           <Check className="shrink-0" style={{ color: theme.botao || '#10b981' }} size={24} />
-                        </div>
-                        <div>
-                           <h4 className="font-bold text-lg mb-1">{titulo || "Benefício"}</h4>
-                           {texto && <p className="opacity-70 text-sm leading-relaxed">{texto}</p>}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            </div>
-          )};
-
-          if (bloco.tipo === 'oferta_preco') return (
-             <div key={index} className="px-6 py-20 text-center border-b border-black/5" style={{ backgroundColor: theme.destaque }}>
-                <div className="max-w-3xl mx-auto bg-white rounded-3xl p-10 shadow-2xl relative">
-                   {bloco.subtitulo && <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-6 py-2 rounded-full font-black text-sm uppercase tracking-widest text-white shadow-lg whitespace-nowrap" style={{ backgroundColor: theme.botao }}>{bloco.subtitulo}</div>}
-                   {bloco.titulo && <h2 className="text-3xl font-black mb-8" style={{ color: theme.texto }}>{bloco.titulo}</h2>}
-                   
-                   <div className="flex flex-col items-center justify-center mb-8">
-                      {bloco.preco_antigo && <span className="text-lg text-slate-400 line-through mb-2 font-medium">De {bloco.preco_antigo}</span>}
-                      {bloco.condicao_pagamento ? (
-                         <div className="flex flex-col items-center">
-                            <span className="text-slate-500 font-bold mb-1">Por apenas</span>
-                            <span className="text-5xl font-black" style={{ color: theme.destaque }}>{bloco.condicao_pagamento}</span>
-                            {bloco.preco_novo && <span className="text-sm font-bold text-slate-400 mt-2">ou {bloco.preco_novo} à vista</span>}
-                         </div>
-                      ) : (
-                         <span className="text-6xl font-black" style={{ color: theme.destaque }}>{bloco.preco_novo}</span>
-                      )}
-                   </div>
-
-                   {bloco.botao_cta && (
-                      <button className="px-10 py-6 rounded-2xl font-black text-2xl shadow-xl transition-transform hover:scale-105 hover:shadow-2xl w-full max-w-md uppercase tracking-wider mb-6 animate-pulse" style={{ backgroundColor: theme.botao, color: theme.texto_botao }}>
-                        {bloco.botao_cta}
-                      </button>
-                   )}
-                   
-                   {bloco.garantia && (
-                      <div className="flex items-center justify-center gap-2 text-sm font-bold opacity-70" style={{ color: theme.texto }}>
-                         <ShieldAlert size={16} /> {bloco.garantia}
-                      </div>
-                   )}
-                </div>
-             </div>
-          );
-
-          if (bloco.tipo === 'faq') {
-            // PROTEÇÃO: Garantir que perguntas é uma lista real
-            const perguntas = Array.isArray(bloco.perguntas) ? bloco.perguntas : [];
-            if (perguntas.length === 0) return null;
-            
-            return (
-            <div key={index} className="px-6 py-16 border-t border-black/5" style={{ backgroundColor: theme.fundo }}>
-              <div className="max-w-4xl mx-auto">
-                <h2 className="text-3xl font-black text-center mb-10 flex items-center justify-center gap-3" style={{ color: theme.destaque }}>
-                  <HelpCircle size={32} /> Perguntas Frequentes
-                </h2>
-                <div className="grid gap-4">
-                  {perguntas.map((faq, i) => (
-                    <div key={i} className="bg-white/80 p-6 rounded-2xl shadow-sm border border-black/5">
-                      <h4 className="font-bold text-lg mb-3 flex items-start gap-3">
-                        <span className="text-2xl mt-0.5" style={{ color: theme.destaque }}>Q.</span> {faq.q || "Pergunta omitida"}
-                      </h4>
-                      <p className="opacity-80 leading-relaxed ml-9">{faq.a || "Resposta omitida"}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )};
-
-          return null;
-        })}
-      </div>
-    </div>
-  );
-};
-
+// ============================================================================
+// NOVO CLONER PAGE (Focado em Upload de Imagem -> Código Replit)
+// ============================================================================
 function ClonerPage() {
-  const [competitorCopy, setCompetitorCopy] = useState('');
-  const [competitorImage, setCompetitorImage] = useState(null); // Guardar Print
-  const [newProductName, setNewProductName] = useState('');
+  const [competitorImage, setCompetitorImage] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [activeAction, setActiveAction] = useState('');
   const [aiResult, setAiResult] = useState(''); 
   const [errorMsg, setErrorMsg] = useState('');
-  const [showProductInput, setShowProductInput] = useState(false);
+  const [outputType, setOutputType] = useState('react'); // 'react' ou 'html'
 
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
@@ -288,38 +93,9 @@ function ClonerPage() {
 
   const removeImage = () => {
     setCompetitorImage(null);
+    setAiResult('');
   };
 
-  const parseHTMLToContext = (inputStr) => {
-    if (!/<html|<body|<div/i.test(inputStr)) return inputStr;
-    try {
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(inputStr, 'text/html');
-      doc.querySelectorAll('script, style, noscript, iframe, svg, path, nav, footer, header').forEach(el => el.remove());
-      let extractedData = "ESTRUTURA VISUAL E TEXTOS DA PÁGINA:\n\n";
-      const walkDOM = (node) => {
-        let result = "";
-        if (node.nodeType === 3) {
-          const text = node.textContent.trim();
-          if (text.length > 0) result += text + " ";
-        } else if (node.nodeType === 1) {
-          const tag = node.tagName.toLowerCase();
-          if (tag === 'img') {
-            const alt = node.getAttribute('alt') || 'Imagem sem descrição';
-            result += `\n[IMAGEM: ${alt}]\n`;
-          } else if (['h1', 'h2', 'h3'].includes(tag)) {
-            result += `\n\n[TÍTULO PRINCIPAL ${tag.toUpperCase()}]: ${node.textContent.trim()}\n`;
-          } else {
-            node.childNodes.forEach(child => { result += walkDOM(child); });
-          }
-        }
-        return result;
-      };
-      return extractedData + walkDOM(doc.body).replace(/\s{2,}/g, ' ').trim();
-    } catch (error) { return inputStr; }
-  };
-
-  // Função interna para chamar a IA (AGORA SUPORTA VISÃO)
   const callAI = async (promptText, imageBase64) => {
     const provider = localStorage.getItem('adsniper_ai_provider') || 'chatgpt';
     const geminiToken = localStorage.getItem('adsniper_gemini_token');
@@ -330,10 +106,9 @@ function ClonerPage() {
 
     if (provider === 'chatgpt') {
       const messages = [
-        { role: 'system', content: 'É um Engenheiro de Funis especialista em CRO, Copywriting e Design Web. Você sabe analisar estruturas e cores.' }
+        { role: 'system', content: 'Você é um Desenvolvedor Front-end Expert focado em Tailwind CSS.' }
       ];
 
-      // Se houver imagem, montamos o payload Vision
       if (imageBase64) {
         messages.push({
           role: 'user',
@@ -343,18 +118,19 @@ function ClonerPage() {
           ]
         });
       } else {
-        messages.push({ role: 'user', content: promptText });
+        throw new Error("Imagem obrigatória para esta operação.");
       }
 
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${chatGptToken}` },
           body: JSON.stringify({
-              model: 'gpt-4o', // Obrigatório ser GPT-4o para visão
+              model: 'gpt-4o',
               messages: messages,
-              temperature: 0.7
+              temperature: 0.2
           })
       });
+      
       if (!response.ok) {
           const err = await response.json().catch(() => ({}));
           throw new Error(err.error?.message || "Erro de ligação à OpenAI");
@@ -364,24 +140,23 @@ function ClonerPage() {
     } 
     
     if (provider === 'gemini') {
-      const model = "gemini-1.5-flash";
+      const model = "gemini-1.5-pro"; // Melhor para código extenso que o flash
       const endpointUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiToken}`;
       
-      let parts = [{ text: promptText }];
+      const mimeType = imageBase64.split(';')[0].split(':')[1];
+      const base64Data = imageBase64.split(',')[1];
       
-      if (imageBase64) {
-        const mimeType = imageBase64.split(';')[0].split(':')[1];
-        const base64Data = imageBase64.split(',')[1];
-        parts.push({
-          inlineData: { mimeType: mimeType, data: base64Data }
-        });
-      }
+      const parts = [
+        { text: promptText },
+        { inlineData: { mimeType: mimeType, data: base64Data } }
+      ];
 
       const response = await fetch(endpointUrl, {
           method: 'POST', 
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ contents: [{ parts: parts }] })
       });
+      
       if (!response.ok) {
           const errData = await response.json().catch(() => ({}));
           throw new Error(errData.error?.message || `Erro na Google Gemini`);
@@ -391,168 +166,102 @@ function ClonerPage() {
     }
   };
 
-  const handleAction = async (actionType) => {
-    if (!competitorCopy.trim() && !competitorImage) {
-      setErrorMsg("Por favor, cole o texto/HTML ou faça o upload de um print da página do concorrente.");
-      return;
-    }
-
-    if (actionType === 'adapt' && !newProductName.trim()) {
-      setShowProductInput(true);
+  const handleGenerateCode = async () => {
+    if (!competitorImage) {
+      setErrorMsg("Por favor, faça o upload do print da página que deseja clonar.");
       return;
     }
 
     setErrorMsg('');
     setIsProcessing(true);
-    setActiveAction(actionType);
     setAiResult('');
 
-    const parsedContext = competitorCopy ? parseHTMLToContext(competitorCopy) : "Página fornecida via Imagem/Print em anexo.";
-    let prompt = '';
+    const prompt = `Você é um Desenvolvedor Front-end Especialista (Engenheiro de Funis).
+    Vou te enviar o Print (Imagem) de uma Landing Page.
+    Sua tarefa é REPLICAR o design, estrutura, textos e layout dessa página escrevendo o código completo.
 
-    switch (actionType) {
-      case 'analyze':
-        prompt = `Atue como um Especialista em CRO e Copywriting. Analise a estrutura desta página de vendas concorrente. 
-        Se foi enviada uma imagem, analise as cores, os botões, os blocos visuais e o texto visível.
-        Destaque: 
-        1. O que está forte nesta estrutura e uso de imagens/design. 
-        2. Falhas e oportunidades de melhoria. 
-        3. Sugestões de novos ângulos de vendas. 
-        Dados: "${parsedContext}"`;
-        break;
-      
-      case 'spin':
-        prompt = `Atue como um Copywriter de Elite. Leia a página anexada (via imagem ou texto) e reescreva toda a copy de vendas para ser 100% original, mas mantenha a mesma força persuasiva. Faça um 'Spin' inteligente.
-        Dados: "${parsedContext}"`;
-        break;
+    Framework desejado: ${outputType === 'react' ? 'React (Componente Funcional Único) com Tailwind CSS' : 'Um arquivo HTML único completo com Tailwind CSS carregado via CDN'}.
 
-      case 'wireframe':
-        prompt = `Atue como um Web Designer de Alta Conversão. Leia este mapeamento da página concorrente e crie um 'Esqueleto' (Wireframe) detalhado de como a Landing Page deve ser montada visualmente no WordPress/Elementor. Note que extraí marcações de [IMAGEM] e [TÍTULOS]. 
-        Liste os blocos em ordem lógica de vendas (ex: Bloco 1: Headline e Vídeo de Vendas. Bloco 2: Benefícios com Ícones...). 
-        Base de Dados: "${parsedContext}"`;
-        break;
-
-      case 'adapt':
-        // PROMPT ULTIMATE: OBRIGA A IA A MAPEAR A PÁGINA INTEIRA E CRIAR BLOCOS RICOS
-        prompt = `Atue como um Engenheiro de Funis Pleno e Web Designer especialista em CRO.
-        Eu vou te enviar um Print (Imagem) longo OU o texto HTML de uma Landing Page gigantesca de altíssima conversão.
-
-        A sua tarefa é LER A PÁGINA DE CIMA A BAIXO, fazer a engenharia reversa de todos os gatilhos mentais, blocos de imagens, depoimentos e estrutura de preço, e recriar uma Landing Page INTEIRA, do zero, para um NOVO produto chamado '${newProductName}'.
-        Para garantir 0% de plágio, MUDE A COPY, mas MANTENHA A ESTRUTURA VISUAL E LÓGICA (se a original tem muitas imagens de produto, crie um bloco de galeria. Se tem uma tabela de preço forte, crie a oferta).
-
-        Regra CRÍTICA: Você DEVE retornar APENAS um objeto JSON válido, mapeando todos os blocos na ordem em que aparecem.
-        Você PODE e DEVE usar os seguintes tipos de blocos para simular a página original:
-        
-        Use este formato JSON exato (adicione os blocos na ordem necessária):
-        {
-          "paleta_cores": { "fundo": "#fafafa", "texto": "#1e293b", "destaque": "#059669", "botao": "#16a34a", "texto_botao": "#ffffff", "fundo_secundario": "#f1f5f9" },
-          "blocos": [
-            { "tipo": "hero", "tag_topo": "Oferta Exclusiva", "headline": "A nova super promessa focada na transformação", "subheadline": "O subtítulo que quebra objeções", "botao_cta": "QUERO COMEÇAR AGORA" },
-            { "tipo": "midia_destaque", "texto_apoio": "Veja os detalhes desta criação", "tipo_midia": "imagem", "prompt_imagem": "Prompt detalhado para Midjourney mostrando o mockup ou a pessoa usando o produto" },
-            { "tipo": "grid_imagens", "titulo": "O que você vai conseguir criar", "prompts": ["Prompt img 1", "Prompt img 2", "Prompt img 3", "Prompt img 4"] },
-            { "tipo": "beneficios", "titulo": "Por que o nosso método é diferente?", "itens": [ {"titulo": "Rápido e Prático", "texto": "Copy do beneficio 1..."}, {"titulo": "Aprovado por experts", "texto": "Copy do beneficio 2..."} ] },
-            { "tipo": "oferta_preco", "titulo": "Libere o seu Acesso Especial", "subtitulo": "Aproveite o desconto de lote 1", "preco_antigo": "R$ 197,00", "preco_novo": "R$ 67,00", "condicao_pagamento": "ou 12x de R$ 6,70", "botao_cta": "COMPRAR COM DESCONTO", "garantia": "Garantia de 7 Dias Risco Zero" },
-            { "tipo": "faq", "perguntas": [{"q": "Tem garantia?", "a": "Sim, 7 dias."}] }
-          ]
-        }
-
-        Lembre-se: Extraia as CORES REAIS da imagem que eu enviei para preencher a "paleta_cores" e gere a página o mais longa e detalhada possível, baseada no original.
-        
-        Novo Produto: "${newProductName}"
-        Dados da Página Original: "${parsedContext}"`;
-        break;
-
-      default:
-        break;
-    }
+    Regras CRÍTICAS:
+    1. Retorne APENAS o código puro final, pronto para ser copiado e colado no Replit. Não inclua textos explicativos antes ou depois.
+    2. Não use formatações markdown no início e no fim se puder evitar (ex: evite \`\`\`html ou \`\`\`jsx). Eu só preciso do código bruto.
+    3. Construa a página inteira de cima a baixo com base no que você vê na imagem.
+    4. Mantenha a mesma paleta de cores, tipografia (pode usar fontes padrão do Tailwind como font-sans) e disposição visual.
+    5. Onde houver imagens na página original, substitua por placeholders visualmente agradáveis (ex: https://via.placeholder.com/800x600/1e293b/ffffff).
+    6. Seja detalhista nos espaçamentos e tamanhos de fonte usando as classes do Tailwind.`;
 
     try {
-      // Passamos a imagem em base64 se existir
-      const result = await callAI(prompt, competitorImage);
-
-      if (actionType === 'adapt') {
-        try {
-          let jsonStr = result;
-          if (jsonStr.includes('```json')) jsonStr = jsonStr.split('```json')[1].split('```')[0];
-          else if (jsonStr.includes('```')) jsonStr = jsonStr.split('```')[1].split('```')[0];
-          
-          const parsedObj = JSON.parse(jsonStr.trim());
-          setAiResult(parsedObj);
-          setShowProductInput(false);
-        } catch (jsonError) {
-          setErrorMsg("A IA não retornou um formato visual válido. Mostrando texto bruto.");
-          setAiResult(result);
+      let result = await callAI(prompt, competitorImage);
+      
+      // Limpeza de possíveis blocos markdown que a IA possa retornar
+      if (result.includes('```')) {
+        const match = result.match(/```(?:html|jsx|javascript|js|tsx|ts)?\n([\s\S]*?)\n```/);
+        if (match && match[1]) {
+          result = match[1];
+        } else {
+          result = result.replace(/```[a-z]*\n/g, '').replace(/```/g, '');
         }
-      } else {
-        setAiResult(result);
       }
+
+      setAiResult(result.trim());
     } catch (err) {
       setErrorMsg(err.message);
     } finally {
       setIsProcessing(false);
-      setActiveAction('');
     }
   };
 
-  const isAiResultObject = typeof aiResult === 'object' && aiResult !== null;
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(aiResult);
+    alert("Código copiado! Cole no Replit.");
+  };
 
   return (
     <div className="max-w-7xl mx-auto py-8 px-4 md:px-8 h-full flex flex-col">
       <div className="flex items-center gap-4 mb-8">
         <div className="w-14 h-14 bg-fuchsia-500/10 border border-fuchsia-500/30 rounded-2xl flex items-center justify-center shadow-[0_0_20px_rgba(217,70,239,0.15)]">
-          <Copy className="w-7 h-7 text-fuchsia-400" />
+          <Code className="w-7 h-7 text-fuchsia-400" />
         </div>
         <div>
-          <h2 className="text-3xl font-bold text-white tracking-tight">Engenheiro de Funis <span className="text-fuchsia-500">IA Vision</span></h2>
-          <p className="text-slate-400 mt-1">Faça upload do print de uma página blindada. A IA "Lê" a imagem e clona a estrutura.</p>
+          <h2 className="text-3xl font-bold text-white tracking-tight">Clonador de Funis <span className="text-fuchsia-500">IA Vision</span></h2>
+          <p className="text-slate-400 mt-1">Envie o print de uma Landing Page completa e transforme-a em código para o Replit em segundos.</p>
         </div>
       </div>
 
       {errorMsg && (
-        <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/30 flex items-start gap-4 animate-in fade-in slide-in-from-top-4">
+        <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/30 flex items-start gap-4 animate-in fade-in">
           <AlertCircle className="w-6 h-6 text-red-500 shrink-0 mt-0.5" />
           <p className="text-slate-300 text-sm leading-relaxed">{errorMsg}</p>
         </div>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 flex-1 min-h-[600px] h-full pb-8">
+        
+        {/* COLUNA ESQUERDA - UPLOAD E CONTROLES */}
         <div className="lg:col-span-4 flex flex-col gap-4">
-          
-          {/* PAINEL DE INSERÇÃO DE DADOS (TEXTO OU IMAGEM) */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg flex flex-col h-auto">
-            <label className="text-sm font-bold text-slate-400 mb-3 flex items-center justify-between uppercase tracking-wider">
-              <span className="flex items-center gap-2"><Code size={16} className="text-fuchsia-500" /> 1. Alimentar a IA</span>
+            <label className="text-sm font-bold text-slate-400 mb-4 flex items-center justify-between uppercase tracking-wider">
+              <span className="flex items-center gap-2"><ImageIcon size={16} className="text-fuchsia-500" /> 1. Upload da Página</span>
             </label>
 
             {!competitorImage ? (
-              <div className="flex flex-col gap-3">
-                <textarea 
-                  className="w-full h-32 bg-slate-950 border border-slate-800 focus:border-fuchsia-500/50 rounded-xl p-4 text-slate-300 text-sm outline-none resize-none transition-colors"
-                  placeholder="Cole o Código HTML (Ctrl+U) ou o texto da página aqui..."
-                  value={competitorCopy}
-                  onChange={(e) => setCompetitorCopy(e.target.value)}
-                ></textarea>
-                
-                <div className="flex items-center gap-4 py-2">
-                  <div className="flex-1 h-px bg-slate-800"></div>
-                  <span className="text-xs font-bold text-slate-600 uppercase">Ou use IA Visão</span>
-                  <div className="flex-1 h-px bg-slate-800"></div>
-                </div>
-
-                <div className="relative border-2 border-dashed border-slate-700 hover:border-fuchsia-500/50 rounded-xl p-6 text-center transition-colors bg-slate-950 cursor-pointer group">
-                  <input type="file" accept="image/*" onChange={handleImageUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
-                  <Upload className="w-8 h-8 text-slate-500 group-hover:text-fuchsia-400 mx-auto mb-2 transition-colors" />
-                  <p className="text-sm font-bold text-slate-300">Faça Upload de um Print (Screenshot)</p>
-                  <p className="text-[10px] text-slate-500 mt-1">A página está bloqueada? Tire um print e envie. A IA vai "ler" a imagem.</p>
-                </div>
+              <div className="relative border-2 border-dashed border-slate-700 hover:border-fuchsia-500/50 rounded-xl p-10 text-center transition-colors bg-slate-950 cursor-pointer group flex flex-col items-center justify-center h-64">
+                <input type="file" accept="image/*" onChange={handleImageUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+                <Upload className="w-12 h-12 text-slate-500 group-hover:text-fuchsia-400 mb-4 transition-colors" />
+                <p className="text-sm font-bold text-slate-300">Arraste ou Clique para enviar o Print</p>
+                <p className="text-xs text-slate-500 mt-2 max-w-xs leading-relaxed">
+                  Tire um print (screenshot) completo da página de vendas que deseja clonar (extensões como "GoFullPage" ajudam).
+                </p>
               </div>
             ) : (
-              <div className="relative rounded-xl overflow-hidden border border-fuchsia-500/30 group">
-                <img src={competitorImage} alt="Print Concorrente" className="w-full h-48 object-cover opacity-80" />
-                <div className="absolute inset-0 bg-slate-950/80 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                  <CheckCircle className="w-8 h-8 text-fuchsia-400 mb-2" />
-                  <span className="text-sm font-bold text-white">Imagem Carregada Pronta</span>
-                  <button onClick={removeImage} className="mt-3 bg-red-600/20 text-red-400 hover:bg-red-600 hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold border border-red-500/30 z-20">Remover Imagem</button>
+              <div className="relative rounded-xl overflow-hidden border border-fuchsia-500/30 group h-64 bg-slate-950">
+                <img src={competitorImage} alt="Print Concorrente" className="w-full h-full object-cover opacity-60" />
+                <div className="absolute inset-0 flex flex-col items-center justify-center transition-opacity bg-slate-900/40 backdrop-blur-sm">
+                  <CheckCircle className="w-10 h-10 text-fuchsia-400 mb-3 drop-shadow-lg" />
+                  <span className="text-sm font-bold text-white drop-shadow-md">Imagem Pronta para Clonagem</span>
+                  <button onClick={removeImage} className="mt-4 bg-slate-800 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-xs font-bold transition-colors z-20 shadow-lg">
+                    Trocar Imagem
+                  </button>
                 </div>
               </div>
             )}
@@ -560,121 +269,82 @@ function ClonerPage() {
 
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg">
             <h3 className="text-sm font-bold text-slate-400 mb-4 uppercase tracking-wider flex items-center gap-2">
-              <Sparkles size={16} className="text-fuchsia-400" /> 2. Ações de Engenharia
+              <Settings size={16} className="text-fuchsia-400" /> 2. Formato de Saída
             </h3>
             
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-3 mb-6">
               <button 
-                onClick={() => handleAction('analyze')}
-                disabled={isProcessing}
-                className="bg-slate-950 hover:bg-indigo-600/20 text-slate-300 hover:text-indigo-300 hover:border-indigo-500/50 border border-slate-800 p-4 rounded-xl flex flex-col items-center justify-center gap-2 transition-all disabled:opacity-50 group"
+                onClick={() => setOutputType('react')}
+                className={`py-3 px-4 rounded-xl text-sm font-bold transition-all border ${outputType === 'react' ? 'bg-fuchsia-600/20 text-fuchsia-300 border-fuchsia-500/50 shadow-inner' : 'bg-slate-950 text-slate-400 border-slate-800 hover:bg-slate-800'}`}
               >
-                {isProcessing && activeAction === 'analyze' ? <Loader2 className="w-6 h-6 animate-spin text-indigo-400" /> : <Search className="w-6 h-6 text-slate-500 group-hover:text-indigo-400 transition-colors" />}
-                <span className="font-bold text-sm">Analisar Visual</span>
+                React (JSX)
               </button>
-
               <button 
-                onClick={() => handleAction('spin')}
-                disabled={isProcessing}
-                className="bg-slate-950 hover:bg-emerald-600/20 text-slate-300 hover:text-emerald-300 hover:border-emerald-500/50 border border-slate-800 p-4 rounded-xl flex flex-col items-center justify-center gap-2 transition-all disabled:opacity-50 group"
+                onClick={() => setOutputType('html')}
+                className={`py-3 px-4 rounded-xl text-sm font-bold transition-all border ${outputType === 'html' ? 'bg-fuchsia-600/20 text-fuchsia-300 border-fuchsia-500/50 shadow-inner' : 'bg-slate-950 text-slate-400 border-slate-800 hover:bg-slate-800'}`}
               >
-                {isProcessing && activeAction === 'spin' ? <Loader2 className="w-6 h-6 animate-spin text-emerald-400" /> : <RefreshCw className="w-6 h-6 text-slate-500 group-hover:text-emerald-400 transition-colors" />}
-                <span className="font-bold text-sm">Spin Anti-Plágio</span>
-              </button>
-
-              <button 
-                onClick={() => handleAction('wireframe')}
-                disabled={isProcessing}
-                className="bg-slate-950 hover:bg-amber-600/20 text-slate-300 hover:text-amber-300 hover:border-amber-500/50 border border-slate-800 p-4 rounded-xl flex flex-col items-center justify-center gap-2 transition-all disabled:opacity-50 group"
-              >
-                {isProcessing && activeAction === 'wireframe' ? <Loader2 className="w-6 h-6 animate-spin text-amber-400" /> : <LayoutTemplate className="w-6 h-6 text-slate-500 group-hover:text-amber-400 transition-colors" />}
-                <span className="font-bold text-sm text-center">Extrair Wireframe</span>
-              </button>
-
-              <button 
-                onClick={() => handleAction('adapt')}
-                disabled={isProcessing}
-                className="bg-slate-950 hover:bg-fuchsia-600/20 text-slate-300 hover:text-fuchsia-300 hover:border-fuchsia-500/50 border border-slate-800 p-4 rounded-xl flex flex-col items-center justify-center gap-2 transition-all disabled:opacity-50 group border-fuchsia-500/30 shadow-[0_0_15px_rgba(217,70,239,0.1)]"
-              >
-                {isProcessing && activeAction === 'adapt' ? <Loader2 className="w-6 h-6 animate-spin text-fuchsia-400" /> : <ArrowRightLeft className="w-6 h-6 text-fuchsia-400 transition-colors" />}
-                <span className="font-bold text-sm text-center text-fuchsia-400">Criar Novo Funil</span>
+                HTML + Tailwind
               </button>
             </div>
 
-            {showProductInput && !isProcessing && (
-              <div className="mt-4 p-4 bg-fuchsia-500/10 border border-fuchsia-500/30 rounded-xl animate-in fade-in zoom-in duration-200">
-                <label className="block text-xs font-bold text-fuchsia-300 mb-2 uppercase tracking-wider">Novo Nicho ou Produto</label>
-                <div className="flex flex-col gap-3">
-                  <input 
-                    type="text" 
-                    placeholder="Ex: Escultura Decorativa de Luxo" 
-                    className="w-full bg-slate-950 border border-fuchsia-500/30 rounded-lg px-3 py-2 text-white outline-none focus:border-fuchsia-500 text-sm"
-                    value={newProductName}
-                    onChange={(e) => setNewProductName(e.target.value)}
-                  />
-                  <button 
-                    onClick={() => handleAction('adapt')}
-                    className="bg-fuchsia-600 hover:bg-fuchsia-500 text-white px-4 py-2 rounded-lg font-bold transition-colors w-full flex items-center justify-center gap-2"
-                  >
-                    <Sparkles size={16} /> Gerar Landing Page Visual
-                  </button>
-                </div>
-              </div>
-            )}
+            <button 
+              onClick={handleGenerateCode}
+              disabled={isProcessing || !competitorImage}
+              className="bg-fuchsia-600 hover:bg-fuchsia-500 text-white p-4 rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-50 w-full font-bold shadow-[0_0_15px_rgba(217,70,239,0.3)] disabled:shadow-none"
+            >
+              {isProcessing ? (
+                <><Loader2 className="w-5 h-5 animate-spin" /> Analisando Visão Computacional...</>
+              ) : (
+                <><Sparkles className="w-5 h-5" /> Gerar Código para Replit</>
+              )}
+            </button>
           </div>
         </div>
 
-        <div className="lg:col-span-8 bg-slate-900 border border-slate-800 rounded-2xl p-1 shadow-xl flex flex-col relative overflow-hidden h-[calc(100vh-180px)]">
-          <div className="flex items-center justify-between p-4 border-b border-slate-800 shrink-0">
-             <h3 className="text-lg font-bold text-white flex items-center gap-2">
-               <MonitorPlay className="text-fuchsia-500" /> {isAiResultObject ? "Construtor Visual" : "Relatório da IA"}
+        {/* COLUNA DIREITA - CÓDIGO GERADO */}
+        <div className="lg:col-span-8 bg-slate-900 border border-slate-800 rounded-2xl flex flex-col relative overflow-hidden h-[calc(100vh-180px)] shadow-xl">
+          <div className="flex items-center justify-between p-4 border-b border-slate-800 shrink-0 bg-slate-950/50">
+             <h3 className="text-sm font-bold text-slate-300 flex items-center gap-2 uppercase tracking-wider">
+               <Terminal size={16} className="text-fuchsia-500" /> Output Code (Replit)
              </h3>
-             {aiResult && !isAiResultObject && (
+             {aiResult && (
                <button 
-                 onClick={() => { navigator.clipboard.writeText(aiResult); alert("Copiado!"); }}
-                 className="text-xs font-bold bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors"
+                 onClick={copyToClipboard}
+                 className="text-sm font-bold bg-fuchsia-600 hover:bg-fuchsia-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-lg"
                >
-                 <Copy size={14} /> Copiar
-               </button>
-             )}
-             {aiResult && isAiResultObject && (
-               <button 
-                 onClick={() => { navigator.clipboard.writeText(JSON.stringify(aiResult, null, 2)); alert("Código JSON Copiado!"); }}
-                 className="text-xs font-bold bg-fuchsia-600/20 hover:bg-fuchsia-600/40 border border-fuchsia-500/50 text-fuchsia-300 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors"
-               >
-                 <Code size={14} /> Exportar JSON
+                 <Copy size={16} /> Copiar Código Inteiro
                </button>
              )}
           </div>
 
-          <div className="flex-1 overflow-hidden h-full">
+          <div className="flex-1 bg-[#0d1117] overflow-hidden relative">
             {isProcessing ? (
-               <div className="h-full flex flex-col items-center justify-center text-fuchsia-400/80 animate-pulse">
-                  <Loader2 className="w-12 h-12 animate-spin mb-4" />
-                  <p className="font-bold text-lg">A IA Vision está a analisar a página e a criar o design...</p>
-                  <p className="text-sm text-fuchsia-400/50 mt-2">Isto pode demorar cerca de 10 a 20 segundos.</p>
-               </div>
-            ) : isAiResultObject ? (
-               <div className="h-full p-2 bg-slate-950">
-                  <VisualLandingPage data={aiResult} />
-               </div>
-            ) : aiResult ? (
-               <div className="h-full p-6 overflow-y-auto custom-scrollbar">
-                  <div className="text-slate-300 text-sm leading-relaxed whitespace-pre-wrap font-medium">
-                    {typeof aiResult === 'string' ? aiResult.split('**').map((chunk, index) => 
-                        index % 2 === 1 ? <strong key={index} className="text-fuchsia-300 font-bold">{chunk}</strong> : chunk
-                    ) : null}
+               <div className="absolute inset-0 flex flex-col items-center justify-center text-fuchsia-400/80 bg-[#0d1117]/80 backdrop-blur-sm z-10">
+                  <div className="relative">
+                    <Loader2 className="w-16 h-16 animate-spin" />
+                    <Sparkles className="w-6 h-6 absolute top-0 right-0 animate-ping text-white" />
                   </div>
+                  <p className="font-bold text-xl mt-6">Clonando Estrutura Visual...</p>
+                  <p className="text-sm text-fuchsia-400/60 mt-2 max-w-sm text-center">A IA está escrevendo o CSS e as tags correspondentes. Isto demora de 20 a 40 segundos.</p>
                </div>
-            ) : (
+            ) : null}
+
+            {aiResult ? (
+               <textarea 
+                  readOnly 
+                  value={aiResult}
+                  className="w-full h-full bg-transparent text-slate-300 font-mono text-sm p-6 resize-none outline-none custom-scrollbar leading-relaxed"
+                  spellCheck="false"
+               />
+            ) : !isProcessing ? (
                <div className="h-full flex flex-col items-center justify-center text-slate-600 p-8 text-center">
-                  <LayoutTemplate className="w-16 h-16 mb-4 opacity-20" />
-                  <p className="max-w-md mb-2">
-                    Cole o código à esquerda, <strong className="text-white">OU faça o upload de um print (screenshot)</strong> da página bloqueada do concorrente.
+                  <LayoutTemplate className="w-20 h-20 mb-6 opacity-10" />
+                  <p className="max-w-md text-lg text-slate-400 font-medium">
+                    O código pronto para o Replit aparecerá aqui.
                   </p>
-                  <p className="text-xs text-slate-500">A Inteligência Artificial "Visão" vai ler a imagem como se fosse um ser humano e recriar o funil adaptado para o seu produto.</p>
+                  <p className="text-sm text-slate-500 mt-2">Envie a imagem ao lado e clique em Gerar.</p>
                </div>
-            )}
+            ) : null}
           </div>
         </div>
 
@@ -1174,7 +844,7 @@ export default function App() {
           </button>
           
           <button onClick={() => setActiveTab('cloner')} className={`w-full text-left p-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'cloner' ? 'bg-fuchsia-600/10 text-fuchsia-400 border border-fuchsia-500/20' : 'hover:bg-slate-800 text-slate-400'}`}>
-            <Copy className="w-5 h-5" /> Engenheiro de Funis
+            <Code className="w-5 h-5" /> Engenheiro de Funis
           </button>
 
           <div className="mt-auto pt-6">
