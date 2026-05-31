@@ -69,7 +69,7 @@ const VisualLandingPage = ({ data }) => {
   if (!data || !data.blocos) return null;
   
   const theme = data.paleta_cores || {
-    fundo: "#ffffff", texto: "#1e293b", destaque: "#4f46e5", botao: "#10b981", texto_botao: "#ffffff"
+    fundo: "#ffffff", texto: "#1e293b", destaque: "#4f46e5", botao: "#10b981", texto_botao: "#ffffff", fundo_secundario: "#f8fafc"
   };
 
   return (
@@ -91,69 +91,141 @@ const VisualLandingPage = ({ data }) => {
       <div className="overflow-y-auto flex-1 custom-scrollbar" style={{ backgroundColor: theme.fundo, color: theme.texto }}>
         {data.blocos.map((bloco, index) => {
           
-          if (bloco.tipo === 'header') return (
-            <div key={index} className="px-6 py-12 text-center flex flex-col items-center justify-center border-b border-black/5">
-              <h1 className="text-3xl sm:text-4xl font-black mb-4 max-w-3xl leading-tight mx-auto" style={{ color: theme.destaque }}>
+          if (bloco.tipo === 'hero' || bloco.tipo === 'header') return (
+            <div key={index} className="px-6 py-16 text-center flex flex-col items-center justify-center border-b border-black/5" style={{ backgroundColor: theme.fundo }}>
+              {bloco.tag_topo && <span className="mb-4 px-3 py-1 text-xs font-bold rounded-full uppercase tracking-wider" style={{ backgroundColor: theme.destaque + '20', color: theme.destaque }}>{bloco.tag_topo}</span>}
+              <h1 className="text-4xl sm:text-5xl font-black mb-6 max-w-4xl leading-tight mx-auto" style={{ color: theme.destaque }}>
                 {bloco.headline}
               </h1>
-              <p className="text-lg opacity-80 max-w-2xl mx-auto">
+              <p className="text-xl opacity-80 max-w-2xl mx-auto mb-8">
                 {bloco.subheadline}
               </p>
+              {bloco.botao_cta && (
+                 <button className="px-10 py-5 rounded-2xl font-black text-xl shadow-xl transition-transform hover:scale-105 w-full max-w-md uppercase tracking-wider" style={{ backgroundColor: theme.botao, color: theme.texto_botao }}>
+                    {bloco.botao_cta}
+                 </button>
+              )}
             </div>
           );
 
-          if (bloco.tipo === 'vsl_section') return (
-            <div key={index} className="px-6 py-10 flex flex-col items-center border-b border-black/5 bg-black/5">
-              <p className="mb-6 font-medium text-center max-w-2xl">{bloco.texto_apoio}</p>
+          if (bloco.tipo === 'midia_destaque' || bloco.tipo === 'vsl_section') return (
+            <div key={index} className="px-6 py-12 flex flex-col items-center border-b border-black/5" style={{ backgroundColor: theme.fundo_secundario || theme.fundo }}>
+              {bloco.texto_apoio && <p className="mb-6 font-medium text-center text-lg max-w-2xl">{bloco.texto_apoio}</p>}
               
-              <div className="w-full max-w-2xl aspect-video bg-black rounded-xl shadow-xl flex flex-col items-center justify-center relative overflow-hidden mb-8 group cursor-pointer border border-white/10">
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent z-10"></div>
-                <MonitorPlay className="w-16 h-16 text-white/80 z-20 group-hover:scale-110 transition-transform duration-300" />
-                <span className="text-white/60 text-sm z-20 mt-4">[ Espaço para o seu Vídeo VSL ]</span>
+              <div className="w-full max-w-3xl aspect-video bg-slate-800 rounded-2xl shadow-2xl flex flex-col items-center justify-center relative overflow-hidden mb-8 border border-white/10 p-6 text-center">
+                <MonitorPlay className="w-16 h-16 text-slate-500 mb-4" />
+                <p className="text-slate-400 text-sm font-medium uppercase tracking-wider mb-2">Espaço para Vídeo ou Imagem Principal</p>
+                {bloco.prompt_imagem && (
+                   <p className="text-xs text-slate-500 italic bg-slate-900/50 p-3 rounded-lg border border-slate-700/50 max-w-lg">Prompt IA: "{bloco.prompt_imagem}"</p>
+                )}
               </div>
 
-              <button className="px-8 py-4 rounded-xl font-black text-lg sm:text-xl shadow-lg transition-transform hover:scale-105 hover:shadow-xl w-full max-w-md uppercase tracking-wide" style={{ backgroundColor: theme.botao, color: theme.texto_botao, textShadow: '0 1px 2px rgba(0,0,0,0.2)' }}>
-                {bloco.botao_cta}
-              </button>
+              {bloco.botao_cta && (
+                <button className="px-10 py-5 rounded-2xl font-black text-xl shadow-xl transition-transform hover:scale-105 w-full max-w-md uppercase tracking-wider" style={{ backgroundColor: theme.botao, color: theme.texto_botao }}>
+                  {bloco.botao_cta}
+                </button>
+              )}
             </div>
+          );
+
+          if (bloco.tipo === 'grid_imagens') return (
+             <div key={index} className="px-6 py-16 flex flex-col items-center border-b border-black/5" style={{ backgroundColor: theme.fundo }}>
+                {bloco.titulo && <h2 className="text-3xl font-black mb-10 text-center" style={{ color: theme.destaque }}>{bloco.titulo}</h2>}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full max-w-5xl">
+                   {(bloco.prompts || []).map((prompt, i) => (
+                      <div key={i} className="aspect-square bg-slate-200 rounded-xl flex flex-col items-center justify-center p-4 text-center border-2 border-dashed border-slate-300">
+                         <ImageIcon className="w-8 h-8 text-slate-400 mb-2" />
+                         <p className="text-[10px] text-slate-600 italic line-clamp-4">{prompt}</p>
+                      </div>
+                   ))}
+                </div>
+             </div>
           );
 
           if (bloco.tipo === 'beneficios') return (
-            <div key={index} className="px-6 py-12 flex flex-col md:flex-row gap-8 items-center max-w-5xl mx-auto">
-              <div className="flex-1 space-y-4 w-full">
-                {bloco.titulo && <h2 className="text-2xl font-bold mb-6" style={{ color: theme.destaque }}>{bloco.titulo}</h2>}
-                {bloco.itens.map((item, i) => (
-                  <div key={i} className="flex items-start gap-3 bg-white/50 p-4 rounded-lg shadow-sm border border-black/5">
-                    <Check className="shrink-0 mt-1" style={{ color: theme.botao }} size={20} />
-                    <span className="font-medium leading-relaxed">{item}</span>
+            <div key={index} className="px-6 py-16 border-b border-black/5" style={{ backgroundColor: theme.fundo_secundario || theme.fundo }}>
+              <div className="max-w-5xl mx-auto flex flex-col lg:flex-row gap-12 items-center">
+                <div className="flex-1 w-full relative">
+                  <div className="aspect-[4/5] bg-slate-200 rounded-3xl flex flex-col items-center justify-center p-8 text-center border border-slate-300 shadow-inner">
+                    <ImageIcon className="w-16 h-16 text-slate-400 mb-4" />
+                    <p className="text-sm text-slate-500 font-bold mb-2 uppercase tracking-wider">Prompt de Imagem (Contexto):</p>
+                    <p className="text-sm text-slate-700 italic select-all bg-white/80 p-4 rounded-xl border border-slate-200 shadow-sm">
+                      "{bloco.sugestao_imagem_prompt || "Imagem ilustrativa dos benefícios"}"
+                    </p>
                   </div>
-                ))}
-              </div>
-              <div className="flex-1 w-full relative">
-                <div className="aspect-square bg-slate-200 rounded-2xl flex flex-col items-center justify-center p-6 text-center border-2 border-dashed border-slate-300 relative overflow-hidden">
-                  <ImageIcon className="w-12 h-12 text-slate-400 mb-4" />
-                  <p className="text-xs text-slate-500 font-medium mb-2 uppercase tracking-wider">Prompt de Imagem para IA:</p>
-                  <p className="text-sm text-slate-700 italic select-all bg-white/80 p-3 rounded border border-slate-200">
-                    "{bloco.sugestao_imagem_prompt}"
-                  </p>
+                </div>
+                <div className="flex-1 space-y-6 w-full">
+                  {bloco.titulo && <h2 className="text-3xl font-black mb-8" style={{ color: theme.destaque }}>{bloco.titulo}</h2>}
+                  {(bloco.itens || []).map((item, i) => {
+                    // Proteção: Aceita tanto objetos ricos quanto textos simples
+                    const isObj = typeof item === 'object' && item !== null;
+                    const titulo = isObj ? item.titulo : item;
+                    const texto = isObj ? item.texto : null;
+
+                    return (
+                      <div key={i} className="flex items-start gap-4 bg-white/60 p-5 rounded-2xl shadow-sm border border-black/5 hover:shadow-md transition-shadow">
+                        <div className="p-2 rounded-full mt-1" style={{ backgroundColor: theme.botao + '20' }}>
+                           <Check className="shrink-0" style={{ color: theme.botao }} size={24} />
+                        </div>
+                        <div>
+                           <h4 className="font-bold text-lg mb-1">{titulo}</h4>
+                           {texto && <p className="opacity-70 text-sm leading-relaxed">{texto}</p>}
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             </div>
           );
 
+          if (bloco.tipo === 'oferta_preco') return (
+             <div key={index} className="px-6 py-20 text-center border-b border-black/5" style={{ backgroundColor: theme.destaque }}>
+                <div className="max-w-3xl mx-auto bg-white rounded-3xl p-10 shadow-2xl relative">
+                   {bloco.subtitulo && <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-6 py-2 rounded-full font-black text-sm uppercase tracking-widest text-white shadow-lg" style={{ backgroundColor: theme.botao }}>{bloco.subtitulo}</div>}
+                   {bloco.titulo && <h2 className="text-3xl font-black mb-8" style={{ color: theme.texto }}>{bloco.titulo}</h2>}
+                   
+                   <div className="flex flex-col items-center justify-center mb-8">
+                      {bloco.preco_antigo && <span className="text-lg text-slate-400 line-through mb-2 font-medium">De {bloco.preco_antigo}</span>}
+                      {bloco.condicao_pagamento ? (
+                         <div className="flex flex-col items-center">
+                            <span className="text-slate-500 font-bold mb-1">Por apenas</span>
+                            <span className="text-5xl font-black" style={{ color: theme.destaque }}>{bloco.condicao_pagamento}</span>
+                            {bloco.preco_novo && <span className="text-sm font-bold text-slate-400 mt-2">ou {bloco.preco_novo} à vista</span>}
+                         </div>
+                      ) : (
+                         <span className="text-6xl font-black" style={{ color: theme.destaque }}>{bloco.preco_novo}</span>
+                      )}
+                   </div>
+
+                   {bloco.botao_cta && (
+                      <button className="px-10 py-6 rounded-2xl font-black text-2xl shadow-xl transition-transform hover:scale-105 hover:shadow-2xl w-full max-w-md uppercase tracking-wider mb-6 animate-pulse" style={{ backgroundColor: theme.botao, color: theme.texto_botao }}>
+                        {bloco.botao_cta}
+                      </button>
+                   )}
+                   
+                   {bloco.garantia && (
+                      <div className="flex items-center justify-center gap-2 text-sm font-bold opacity-70" style={{ color: theme.texto }}>
+                         <ShieldAlert size={16} /> {bloco.garantia}
+                      </div>
+                   )}
+                </div>
+             </div>
+          );
+
           if (bloco.tipo === 'faq') return (
-            <div key={index} className="px-6 py-12 bg-black/5 border-t border-black/5">
-              <div className="max-w-3xl mx-auto">
-                <h2 className="text-2xl font-black text-center mb-8 flex items-center justify-center gap-2" style={{ color: theme.destaque }}>
-                  <HelpCircle /> Perguntas Frequentes
+            <div key={index} className="px-6 py-16 border-t border-black/5" style={{ backgroundColor: theme.fundo }}>
+              <div className="max-w-4xl mx-auto">
+                <h2 className="text-3xl font-black text-center mb-10 flex items-center justify-center gap-3" style={{ color: theme.destaque }}>
+                  <HelpCircle size={32} /> Perguntas Frequentes
                 </h2>
-                <div className="space-y-4">
-                  {bloco.perguntas.map((faq, i) => (
-                    <div key={i} className="bg-white/80 p-5 rounded-xl shadow-sm border border-black/5">
-                      <h4 className="font-bold mb-2 flex items-center gap-2">
-                        <span style={{ color: theme.destaque }}>Q:</span> {faq.q}
+                <div className="grid gap-4">
+                  {(bloco.perguntas || []).map((faq, i) => (
+                    <div key={i} className="bg-white/80 p-6 rounded-2xl shadow-sm border border-black/5">
+                      <h4 className="font-bold text-lg mb-3 flex items-start gap-3">
+                        <span className="text-2xl mt-0.5" style={{ color: theme.destaque }}>Q.</span> {faq.q}
                       </h4>
-                      <p className="opacity-80 text-sm leading-relaxed ml-6">{faq.a}</p>
+                      <p className="opacity-80 leading-relaxed ml-9">{faq.a}</p>
                     </div>
                   ))}
                 </div>
