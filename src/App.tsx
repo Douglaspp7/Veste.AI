@@ -2,16 +2,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Settings, Zap, Target, Crosshair, Loader2, Lock, ArrowRight,
-  LayoutDashboard, PlayCircle, Image as ImageIcon, BarChart2, X, Terminal,
-  AlertCircle, Code, ExternalLink, Calendar, ThumbsUp, Layers, Sparkles, Bot,
+  LayoutDashboard, PlayCircle, Image as ImageIcon, BarChart2, X,
+  AlertCircle, ExternalLink, Calendar, ThumbsUp, Layers, Sparkles, Bot,
   Heart, Filter, Video, Bookmark, DollarSign, Clock, CheckCircle, Flame, Library,
-  ArrowUpDown, ShieldAlert, SplitSquareHorizontal, Rocket, Trophy, PenTool, Copy,
-  Search, RefreshCw, LayoutTemplate, ArrowRightLeft, MonitorPlay, Check, HelpCircle, Upload,
-  Download
+  ArrowUpDown, ShieldAlert, SplitSquareHorizontal, Rocket, Trophy, PenTool,
+  Search, RefreshCw, LayoutTemplate, Check, HelpCircle
 } from 'lucide-react';
 
 // ============================================================================
-// COMPONENTES DAS PÁGINAS (Settings, Generator, Cloner)
+// COMPONENTES DAS PÁGINAS (Settings, Generator)
 // ============================================================================
 
 function SettingsPage({ 
@@ -61,294 +60,6 @@ function GeneratorPage() {
       <button disabled className="bg-indigo-600/50 text-indigo-200 border border-indigo-500/30 px-8 py-3 rounded-xl font-bold flex items-center gap-2 cursor-not-allowed">
         <Loader2 className="w-5 h-5 animate-spin" /> Em Desenvolvimento...
       </button>
-    </div>
-  );
-}
-
-// ============================================================================
-// NOVO CLONER PAGE (Focado em Upload de Imagem -> Código Replit)
-// ============================================================================
-function ClonerPage() {
-  const [competitorImage, setCompetitorImage] = useState(null);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [aiResult, setAiResult] = useState(''); 
-  const [errorMsg, setErrorMsg] = useState('');
-  const [outputType, setOutputType] = useState('react'); // 'react' ou 'html'
-
-  const handleImageUpload = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        setErrorMsg("A imagem deve ter menos de 5MB.");
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setCompetitorImage(reader.result);
-        setErrorMsg('');
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const removeImage = () => {
-    setCompetitorImage(null);
-    setAiResult('');
-  };
-
-  const callAI = async (promptText, imageBase64) => {
-    const provider = localStorage.getItem('adsniper_ai_provider') || 'chatgpt';
-    const geminiToken = localStorage.getItem('adsniper_gemini_token');
-    const chatGptToken = localStorage.getItem('adsniper_gpt_token');
-
-    if (provider === 'gemini' && !geminiToken) throw new Error("Chave da API do Google Gemini não encontrada.");
-    if (provider === 'chatgpt' && !chatGptToken) throw new Error("Chave da API da OpenAI (ChatGPT) não encontrada.");
-
-    if (provider === 'chatgpt') {
-      const messages = [
-        { role: 'system', content: 'Você é um Desenvolvedor Front-end Expert focado em Tailwind CSS.' }
-      ];
-
-      if (imageBase64) {
-        messages.push({
-          role: 'user',
-          content: [
-            { type: "text", text: promptText },
-            { type: "image_url", image_url: { url: imageBase64 } }
-          ]
-        });
-      } else {
-        throw new Error("Imagem obrigatória para esta operação.");
-      }
-
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${chatGptToken}` },
-          body: JSON.stringify({
-              model: 'gpt-4o',
-              messages: messages,
-              temperature: 0.2
-          })
-      });
-      
-      if (!response.ok) {
-          const err = await response.json().catch(() => ({}));
-          throw new Error(err.error?.message || "Erro de ligação à OpenAI");
-      }
-      const data = await response.json();
-      return data.choices[0].message.content;
-    } 
-    
-    if (provider === 'gemini') {
-      const model = "gemini-1.5-pro"; // Melhor para código extenso que o flash
-      const endpointUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiToken}`;
-      
-      const mimeType = imageBase64.split(';')[0].split(':')[1];
-      const base64Data = imageBase64.split(',')[1];
-      
-      const parts = [
-        { text: promptText },
-        { inlineData: { mimeType: mimeType, data: base64Data } }
-      ];
-
-      const response = await fetch(endpointUrl, {
-          method: 'POST', 
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: parts }] })
-      });
-      
-      if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          throw new Error(errData.error?.message || `Erro na Google Gemini`);
-      }
-      const data = await response.json();
-      return data.candidates?.[0]?.content?.parts?.[0]?.text || "Resposta vazia da IA.";
-    }
-  };
-
-  const handleGenerateCode = async () => {
-    if (!competitorImage) {
-      setErrorMsg("Por favor, faça o upload do print da página que deseja clonar.");
-      return;
-    }
-
-    setErrorMsg('');
-    setIsProcessing(true);
-    setAiResult('');
-
-    const prompt = `Você é um Desenvolvedor Front-end Especialista (Engenheiro de Funis).
-    Vou te enviar o Print (Imagem) de uma Landing Page.
-    Sua tarefa é REPLICAR o design, estrutura, textos e layout dessa página escrevendo o código completo.
-
-    Framework desejado: ${outputType === 'react' ? 'React (Componente Funcional Único) com Tailwind CSS' : 'Um arquivo HTML único completo com Tailwind CSS carregado via CDN'}.
-
-    Regras CRÍTICAS:
-    1. Retorne APENAS o código puro final, pronto para ser copiado e colado no Replit. Não inclua textos explicativos antes ou depois.
-    2. Não use formatações markdown no início e no fim se puder evitar (ex: evite \`\`\`html ou \`\`\`jsx). Eu só preciso do código bruto.
-    3. Construa a página inteira de cima a baixo com base no que você vê na imagem.
-    4. Mantenha a mesma paleta de cores, tipografia (pode usar fontes padrão do Tailwind como font-sans) e disposição visual.
-    5. Onde houver imagens na página original, substitua por placeholders visualmente agradáveis (ex: https://via.placeholder.com/800x600/1e293b/ffffff).
-    6. Seja detalhista nos espaçamentos e tamanhos de fonte usando as classes do Tailwind.`;
-
-    try {
-      let result = await callAI(prompt, competitorImage);
-      
-      // Limpeza de possíveis blocos markdown que a IA possa retornar
-      if (result.includes('```')) {
-        const match = result.match(/```(?:html|jsx|javascript|js|tsx|ts)?\n([\s\S]*?)\n```/);
-        if (match && match[1]) {
-          result = match[1];
-        } else {
-          result = result.replace(/```[a-z]*\n/g, '').replace(/```/g, '');
-        }
-      }
-
-      setAiResult(result.trim());
-    } catch (err) {
-      setErrorMsg(err.message);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(aiResult);
-    alert("Código copiado! Cole no Replit.");
-  };
-
-  return (
-    <div className="max-w-7xl mx-auto py-8 px-4 md:px-8 h-full flex flex-col">
-      <div className="flex items-center gap-4 mb-8">
-        <div className="w-14 h-14 bg-fuchsia-500/10 border border-fuchsia-500/30 rounded-2xl flex items-center justify-center shadow-[0_0_20px_rgba(217,70,239,0.15)]">
-          <Code className="w-7 h-7 text-fuchsia-400" />
-        </div>
-        <div>
-          <h2 className="text-3xl font-bold text-white tracking-tight">Clonador de Funis <span className="text-fuchsia-500">IA Vision</span></h2>
-          <p className="text-slate-400 mt-1">Envie o print de uma Landing Page completa e transforme-a em código para o Replit em segundos.</p>
-        </div>
-      </div>
-
-      {errorMsg && (
-        <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/30 flex items-start gap-4 animate-in fade-in">
-          <AlertCircle className="w-6 h-6 text-red-500 shrink-0 mt-0.5" />
-          <p className="text-slate-300 text-sm leading-relaxed">{errorMsg}</p>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 flex-1 min-h-[600px] h-full pb-8">
-        
-        {/* COLUNA ESQUERDA - UPLOAD E CONTROLES */}
-        <div className="lg:col-span-4 flex flex-col gap-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg flex flex-col h-auto">
-            <label className="text-sm font-bold text-slate-400 mb-4 flex items-center justify-between uppercase tracking-wider">
-              <span className="flex items-center gap-2"><ImageIcon size={16} className="text-fuchsia-500" /> 1. Upload da Página</span>
-            </label>
-
-            {!competitorImage ? (
-              <div className="relative border-2 border-dashed border-slate-700 hover:border-fuchsia-500/50 rounded-xl p-10 text-center transition-colors bg-slate-950 cursor-pointer group flex flex-col items-center justify-center h-64">
-                <input type="file" accept="image/*" onChange={handleImageUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
-                <Upload className="w-12 h-12 text-slate-500 group-hover:text-fuchsia-400 mb-4 transition-colors" />
-                <p className="text-sm font-bold text-slate-300">Arraste ou Clique para enviar o Print</p>
-                <p className="text-xs text-slate-500 mt-2 max-w-xs leading-relaxed">
-                  Tire um print (screenshot) completo da página de vendas que deseja clonar (extensões como "GoFullPage" ajudam).
-                </p>
-              </div>
-            ) : (
-              <div className="relative rounded-xl overflow-hidden border border-fuchsia-500/30 group h-64 bg-slate-950">
-                <img src={competitorImage} alt="Print Concorrente" className="w-full h-full object-cover opacity-60" />
-                <div className="absolute inset-0 flex flex-col items-center justify-center transition-opacity bg-slate-900/40 backdrop-blur-sm">
-                  <CheckCircle className="w-10 h-10 text-fuchsia-400 mb-3 drop-shadow-lg" />
-                  <span className="text-sm font-bold text-white drop-shadow-md">Imagem Pronta para Clonagem</span>
-                  <button onClick={removeImage} className="mt-4 bg-slate-800 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-xs font-bold transition-colors z-20 shadow-lg">
-                    Trocar Imagem
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg">
-            <h3 className="text-sm font-bold text-slate-400 mb-4 uppercase tracking-wider flex items-center gap-2">
-              <Settings size={16} className="text-fuchsia-400" /> 2. Formato de Saída
-            </h3>
-            
-            <div className="grid grid-cols-2 gap-3 mb-6">
-              <button 
-                onClick={() => setOutputType('react')}
-                className={`py-3 px-4 rounded-xl text-sm font-bold transition-all border ${outputType === 'react' ? 'bg-fuchsia-600/20 text-fuchsia-300 border-fuchsia-500/50 shadow-inner' : 'bg-slate-950 text-slate-400 border-slate-800 hover:bg-slate-800'}`}
-              >
-                React (JSX)
-              </button>
-              <button 
-                onClick={() => setOutputType('html')}
-                className={`py-3 px-4 rounded-xl text-sm font-bold transition-all border ${outputType === 'html' ? 'bg-fuchsia-600/20 text-fuchsia-300 border-fuchsia-500/50 shadow-inner' : 'bg-slate-950 text-slate-400 border-slate-800 hover:bg-slate-800'}`}
-              >
-                HTML + Tailwind
-              </button>
-            </div>
-
-            <button 
-              onClick={handleGenerateCode}
-              disabled={isProcessing || !competitorImage}
-              className="bg-fuchsia-600 hover:bg-fuchsia-500 text-white p-4 rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-50 w-full font-bold shadow-[0_0_15px_rgba(217,70,239,0.3)] disabled:shadow-none"
-            >
-              {isProcessing ? (
-                <><Loader2 className="w-5 h-5 animate-spin" /> Analisando Visão Computacional...</>
-              ) : (
-                <><Sparkles className="w-5 h-5" /> Gerar Código para Replit</>
-              )}
-            </button>
-          </div>
-        </div>
-
-        {/* COLUNA DIREITA - CÓDIGO GERADO */}
-        <div className="lg:col-span-8 bg-slate-900 border border-slate-800 rounded-2xl flex flex-col relative overflow-hidden h-[calc(100vh-180px)] shadow-xl">
-          <div className="flex items-center justify-between p-4 border-b border-slate-800 shrink-0 bg-slate-950/50">
-             <h3 className="text-sm font-bold text-slate-300 flex items-center gap-2 uppercase tracking-wider">
-               <Terminal size={16} className="text-fuchsia-500" /> Output Code (Replit)
-             </h3>
-             {aiResult && (
-               <button 
-                 onClick={copyToClipboard}
-                 className="text-sm font-bold bg-fuchsia-600 hover:bg-fuchsia-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-lg"
-               >
-                 <Copy size={16} /> Copiar Código Inteiro
-               </button>
-             )}
-          </div>
-
-          <div className="flex-1 bg-[#0d1117] overflow-hidden relative">
-            {isProcessing ? (
-               <div className="absolute inset-0 flex flex-col items-center justify-center text-fuchsia-400/80 bg-[#0d1117]/80 backdrop-blur-sm z-10">
-                  <div className="relative">
-                    <Loader2 className="w-16 h-16 animate-spin" />
-                    <Sparkles className="w-6 h-6 absolute top-0 right-0 animate-ping text-white" />
-                  </div>
-                  <p className="font-bold text-xl mt-6">Clonando Estrutura Visual...</p>
-                  <p className="text-sm text-fuchsia-400/60 mt-2 max-w-sm text-center">A IA está escrevendo o CSS e as tags correspondentes. Isto demora de 20 a 40 segundos.</p>
-               </div>
-            ) : null}
-
-            {aiResult ? (
-               <textarea 
-                  readOnly 
-                  value={aiResult}
-                  className="w-full h-full bg-transparent text-slate-300 font-mono text-sm p-6 resize-none outline-none custom-scrollbar leading-relaxed"
-                  spellCheck="false"
-               />
-            ) : !isProcessing ? (
-               <div className="h-full flex flex-col items-center justify-center text-slate-600 p-8 text-center">
-                  <LayoutTemplate className="w-20 h-20 mb-6 opacity-10" />
-                  <p className="max-w-md text-lg text-slate-400 font-medium">
-                    O código pronto para o Replit aparecerá aqui.
-                  </p>
-                  <p className="text-sm text-slate-500 mt-2">Envie a imagem ao lado e clique em Gerar.</p>
-               </div>
-            ) : null}
-          </div>
-        </div>
-
-      </div>
     </div>
   );
 }
@@ -842,10 +553,6 @@ export default function App() {
           <button onClick={() => setActiveTab('generator')} className={`w-full text-left p-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'generator' ? 'bg-indigo-600/10 text-indigo-400 border border-indigo-500/20' : 'hover:bg-slate-800 text-slate-400'}`}>
             <PenTool className="w-5 h-5" /> Gerador de Criativos
           </button>
-          
-          <button onClick={() => setActiveTab('cloner')} className={`w-full text-left p-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'cloner' ? 'bg-fuchsia-600/10 text-fuchsia-400 border border-fuchsia-500/20' : 'hover:bg-slate-800 text-slate-400'}`}>
-            <Code className="w-5 h-5" /> Engenheiro de Funis
-          </button>
 
           <div className="mt-auto pt-6">
             <button onClick={() => setActiveTab('settings')} className={`w-full text-left p-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'settings' ? 'bg-slate-800 text-white border border-slate-700' : 'hover:bg-slate-800 text-slate-400'}`}>
@@ -861,8 +568,6 @@ export default function App() {
         {/* ROTEAMENTO DE ABAS MODULARES */}
         {/* ========================================================= */}
         {activeTab === 'generator' && <GeneratorPage />}
-
-        {activeTab === 'cloner' && <ClonerPage />}
 
         {activeTab === 'settings' && (
           <div className="max-w-2xl mx-auto p-4 md:p-8 w-full">
