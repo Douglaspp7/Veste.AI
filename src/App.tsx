@@ -64,13 +64,19 @@ function GeneratorPage() {
   );
 }
 
-// NOVO COMPONENTE: Visualizador de Landing Page Gerada
+// NOVO COMPONENTE: Visualizador de Landing Page Gerada (100% Blindado contra Crash)
 const VisualLandingPage = ({ data }) => {
-  if (!data || !data.blocos) return null;
+  // PROTEÇÃO 1: Garantir que temos um objeto válido e não texto solto
+  if (!data || typeof data !== 'object') return <div className="p-8 text-slate-400 text-center">Nenhum dado válido recebido.</div>;
   
-  const theme = data.paleta_cores || {
-    fundo: "#ffffff", texto: "#1e293b", destaque: "#4f46e5", botao: "#10b981", texto_botao: "#ffffff", fundo_secundario: "#f8fafc"
-  };
+  // PROTEÇÃO 2: Garantir que blocos é um array real
+  const blocos = Array.isArray(data.blocos) ? data.blocos : [];
+  if (blocos.length === 0) return <div className="p-8 text-slate-400 text-center">A IA gerou a página, mas não estruturou os blocos corretamente. Tente clicar em "Gerar" novamente.</div>;
+  
+  // PROTEÇÃO 3: Garantir cores padrão seguras caso a IA não envie as cores corretamente
+  const theme = (typeof data.paleta_cores === 'object' && data.paleta_cores !== null) 
+    ? { ...data.paleta_cores, fundo_secundario: data.paleta_cores.fundo_secundario || data.paleta_cores.fundo || "#f8fafc" }
+    : { fundo: "#ffffff", texto: "#1e293b", destaque: "#4f46e5", botao: "#10b981", texto_botao: "#ffffff", fundo_secundario: "#f8fafc" };
 
   return (
     <div className="w-full rounded-xl overflow-hidden border border-slate-700 shadow-2xl flex flex-col h-full bg-slate-900">
@@ -88,17 +94,19 @@ const VisualLandingPage = ({ data }) => {
         </div>
       </div>
 
-      <div className="overflow-y-auto flex-1 custom-scrollbar" style={{ backgroundColor: theme.fundo, color: theme.texto }}>
-        {data.blocos.map((bloco, index) => {
-          
+      <div className="overflow-y-auto flex-1 custom-scrollbar" style={{ backgroundColor: theme.fundo || '#ffffff', color: theme.texto || '#000000' }}>
+        {blocos.map((bloco, index) => {
+          // PROTEÇÃO CONTRA BLOCOS VAZIOS OU MAL FORMADOS PELA IA
+          if (!bloco || typeof bloco !== 'object') return null;
+
           if (bloco.tipo === 'hero' || bloco.tipo === 'header') return (
             <div key={index} className="px-6 py-16 text-center flex flex-col items-center justify-center border-b border-black/5" style={{ backgroundColor: theme.fundo }}>
-              {bloco.tag_topo && <span className="mb-4 px-3 py-1 text-xs font-bold rounded-full uppercase tracking-wider" style={{ backgroundColor: theme.destaque + '20', color: theme.destaque }}>{bloco.tag_topo}</span>}
+              {bloco.tag_topo && <span className="mb-4 px-3 py-1 text-xs font-bold rounded-full uppercase tracking-wider" style={{ backgroundColor: (theme.destaque || '#4f46e5') + '20', color: theme.destaque }}>{bloco.tag_topo}</span>}
               <h1 className="text-4xl sm:text-5xl font-black mb-6 max-w-4xl leading-tight mx-auto" style={{ color: theme.destaque }}>
-                {bloco.headline}
+                {bloco.headline || "Promessa Principal Aqui"}
               </h1>
               <p className="text-xl opacity-80 max-w-2xl mx-auto mb-8">
-                {bloco.subheadline}
+                {bloco.subheadline || "Subtítulo de apoio não gerado."}
               </p>
               {bloco.botao_cta && (
                  <button className="px-10 py-5 rounded-2xl font-black text-xl shadow-xl transition-transform hover:scale-105 w-full max-w-md uppercase tracking-wider" style={{ backgroundColor: theme.botao, color: theme.texto_botao }}>
@@ -109,7 +117,7 @@ const VisualLandingPage = ({ data }) => {
           );
 
           if (bloco.tipo === 'midia_destaque' || bloco.tipo === 'vsl_section') return (
-            <div key={index} className="px-6 py-12 flex flex-col items-center border-b border-black/5" style={{ backgroundColor: theme.fundo_secundario || theme.fundo }}>
+            <div key={index} className="px-6 py-12 flex flex-col items-center border-b border-black/5" style={{ backgroundColor: theme.fundo_secundario }}>
               {bloco.texto_apoio && <p className="mb-6 font-medium text-center text-lg max-w-2xl">{bloco.texto_apoio}</p>}
               
               <div className="w-full max-w-3xl aspect-video bg-slate-800 rounded-2xl shadow-2xl flex flex-col items-center justify-center relative overflow-hidden mb-8 border border-white/10 p-6 text-center">
@@ -128,22 +136,30 @@ const VisualLandingPage = ({ data }) => {
             </div>
           );
 
-          if (bloco.tipo === 'grid_imagens') return (
+          if (bloco.tipo === 'grid_imagens') {
+             // PROTEÇÃO: Garantir que prompts é realmente uma lista
+             const prompts = Array.isArray(bloco.prompts) ? bloco.prompts : (typeof bloco.prompts === 'string' ? [bloco.prompts] : []);
+             if (prompts.length === 0) return null;
+
+             return (
              <div key={index} className="px-6 py-16 flex flex-col items-center border-b border-black/5" style={{ backgroundColor: theme.fundo }}>
                 {bloco.titulo && <h2 className="text-3xl font-black mb-10 text-center" style={{ color: theme.destaque }}>{bloco.titulo}</h2>}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full max-w-5xl">
-                   {(bloco.prompts || []).map((prompt, i) => (
+                   {prompts.map((prompt, i) => (
                       <div key={i} className="aspect-square bg-slate-200 rounded-xl flex flex-col items-center justify-center p-4 text-center border-2 border-dashed border-slate-300">
-                         <ImageIcon className="w-8 h-8 text-slate-400 mb-2" />
+                         <ImageIcon className="w-8 h-8 text-slate-400 mb-2 shrink-0" />
                          <p className="text-[10px] text-slate-600 italic line-clamp-4">{prompt}</p>
                       </div>
                    ))}
                 </div>
              </div>
-          );
+          )};
 
-          if (bloco.tipo === 'beneficios') return (
-            <div key={index} className="px-6 py-16 border-b border-black/5" style={{ backgroundColor: theme.fundo_secundario || theme.fundo }}>
+          if (bloco.tipo === 'beneficios') {
+            // PROTEÇÃO: Garantir que itens é uma lista e não quebra a tela
+            const itens = Array.isArray(bloco.itens) ? bloco.itens : (typeof bloco.itens === 'string' ? [bloco.itens] : []);
+            return (
+            <div key={index} className="px-6 py-16 border-b border-black/5" style={{ backgroundColor: theme.fundo_secundario }}>
               <div className="max-w-5xl mx-auto flex flex-col lg:flex-row gap-12 items-center">
                 <div className="flex-1 w-full relative">
                   <div className="aspect-[4/5] bg-slate-200 rounded-3xl flex flex-col items-center justify-center p-8 text-center border border-slate-300 shadow-inner">
@@ -156,19 +172,18 @@ const VisualLandingPage = ({ data }) => {
                 </div>
                 <div className="flex-1 space-y-6 w-full">
                   {bloco.titulo && <h2 className="text-3xl font-black mb-8" style={{ color: theme.destaque }}>{bloco.titulo}</h2>}
-                  {(bloco.itens || []).map((item, i) => {
-                    // Proteção: Aceita tanto objetos ricos quanto textos simples
+                  {itens.map((item, i) => {
                     const isObj = typeof item === 'object' && item !== null;
                     const titulo = isObj ? item.titulo : item;
                     const texto = isObj ? item.texto : null;
 
                     return (
                       <div key={i} className="flex items-start gap-4 bg-white/60 p-5 rounded-2xl shadow-sm border border-black/5 hover:shadow-md transition-shadow">
-                        <div className="p-2 rounded-full mt-1" style={{ backgroundColor: theme.botao + '20' }}>
-                           <Check className="shrink-0" style={{ color: theme.botao }} size={24} />
+                        <div className="p-2 rounded-full mt-1" style={{ backgroundColor: (theme.botao || '#10b981') + '20' }}>
+                           <Check className="shrink-0" style={{ color: theme.botao || '#10b981' }} size={24} />
                         </div>
                         <div>
-                           <h4 className="font-bold text-lg mb-1">{titulo}</h4>
+                           <h4 className="font-bold text-lg mb-1">{titulo || "Benefício"}</h4>
                            {texto && <p className="opacity-70 text-sm leading-relaxed">{texto}</p>}
                         </div>
                       </div>
@@ -177,12 +192,12 @@ const VisualLandingPage = ({ data }) => {
                 </div>
               </div>
             </div>
-          );
+          )};
 
           if (bloco.tipo === 'oferta_preco') return (
              <div key={index} className="px-6 py-20 text-center border-b border-black/5" style={{ backgroundColor: theme.destaque }}>
                 <div className="max-w-3xl mx-auto bg-white rounded-3xl p-10 shadow-2xl relative">
-                   {bloco.subtitulo && <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-6 py-2 rounded-full font-black text-sm uppercase tracking-widest text-white shadow-lg" style={{ backgroundColor: theme.botao }}>{bloco.subtitulo}</div>}
+                   {bloco.subtitulo && <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-6 py-2 rounded-full font-black text-sm uppercase tracking-widest text-white shadow-lg whitespace-nowrap" style={{ backgroundColor: theme.botao }}>{bloco.subtitulo}</div>}
                    {bloco.titulo && <h2 className="text-3xl font-black mb-8" style={{ color: theme.texto }}>{bloco.titulo}</h2>}
                    
                    <div className="flex flex-col items-center justify-center mb-8">
@@ -213,25 +228,30 @@ const VisualLandingPage = ({ data }) => {
              </div>
           );
 
-          if (bloco.tipo === 'faq') return (
+          if (bloco.tipo === 'faq') {
+            // PROTEÇÃO: Garantir que perguntas é uma lista real
+            const perguntas = Array.isArray(bloco.perguntas) ? bloco.perguntas : [];
+            if (perguntas.length === 0) return null;
+            
+            return (
             <div key={index} className="px-6 py-16 border-t border-black/5" style={{ backgroundColor: theme.fundo }}>
               <div className="max-w-4xl mx-auto">
                 <h2 className="text-3xl font-black text-center mb-10 flex items-center justify-center gap-3" style={{ color: theme.destaque }}>
                   <HelpCircle size={32} /> Perguntas Frequentes
                 </h2>
                 <div className="grid gap-4">
-                  {(bloco.perguntas || []).map((faq, i) => (
+                  {perguntas.map((faq, i) => (
                     <div key={i} className="bg-white/80 p-6 rounded-2xl shadow-sm border border-black/5">
                       <h4 className="font-bold text-lg mb-3 flex items-start gap-3">
-                        <span className="text-2xl mt-0.5" style={{ color: theme.destaque }}>Q.</span> {faq.q}
+                        <span className="text-2xl mt-0.5" style={{ color: theme.destaque }}>Q.</span> {faq.q || "Pergunta omitida"}
                       </h4>
-                      <p className="opacity-80 leading-relaxed ml-9">{faq.a}</p>
+                      <p className="opacity-80 leading-relaxed ml-9">{faq.a || "Resposta omitida"}</p>
                     </div>
                   ))}
                 </div>
               </div>
             </div>
-          );
+          )};
 
           return null;
         })}
@@ -239,7 +259,6 @@ const VisualLandingPage = ({ data }) => {
     </div>
   );
 };
-
 
 function ClonerPage() {
   const [competitorCopy, setCompetitorCopy] = useState('');
