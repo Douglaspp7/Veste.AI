@@ -1,62 +1,18 @@
 // @ts-nocheck
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-Settings, Zap, Target, Crosshair, Loader2, Lock, ArrowRight,
-LayoutDashboard, PlayCircle, Image as ImageIcon, BarChart2, X, Terminal,
-AlertCircle, Code, ExternalLink, Calendar, ThumbsUp, Layers, Sparkles, Bot,
-Heart, Filter, Video, Bookmark, DollarSign, Clock, CheckCircle, Flame, Library,
-ArrowUpDown, ShieldAlert, SplitSquareHorizontal, Rocket, Trophy, PenTool, Copy
+Zap, Target, Crosshair, Loader2, Lock, ArrowRight,
+LayoutDashboard, PlayCircle, Image as ImageIcon, X,
+AlertCircle, ExternalLink, Calendar, Layers, Sparkles, Bot,
+Heart, Filter, Video, Bookmark, DollarSign, Clock, Library,
+ArrowUpDown, ShieldAlert, SplitSquareHorizontal, Rocket, Trophy, PenTool, Copy, Settings
 } from 'lucide-react';
 
-// ============================================================================
-// A PONTE: IMPORTAR A NOVA PÁGINA DO CLONADOR
-// ============================================================================
+// IMPORTAÇÕES DOS NOSSOS NOVOS MÓDULOS
+import { FusionBadge, StatusToVariant, StatusToText, StatusToIcon, PlatformBadge } from './components/SharedUI';
+import GeneratorPage from './pages/GeneratorPage';
 import ClonerPage from './pages/ClonerPage';
-
-// --- COMPONENTES DE DESIGN ---
-const FusionBadge = ({ icon: Icon, text, variant = 'default', className = '' }) => {
-const variants = {
-default: "bg-slate-800 text-slate-300 border-slate-700",
-success: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-warning: "bg-orange-500/10 text-orange-400 border-orange-500/20",
-danger: "bg-rose-500/10 text-rose-400 border-rose-500/20",
-brand: "bg-indigo-500/10 text-indigo-400 border-indigo-500/20",
-gold: "bg-yellow-500/10 text-yellow-400 border-yellow-500/30"
-};
-return (
-<div className={flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-[10px] font-bold tracking-wide uppercase ${variants[variant]} ${className}}>
-{Icon && }
-{text}
-
-);
-};
-
-const StatusToVariant = (score) => {
-if (score >= 80) return 'warning';
-if (score >= 50) return 'success';
-return 'default';
-};
-
-const StatusToText = (score) => {
-if (score >= 80) return '🔥 Super Escala';
-if (score >= 50) return 'Validado';
-return 'Teste';
-};
-
-const StatusToIcon = (score) => {
-if (score >= 80) return Flame;
-if (score >= 50) return CheckCircle;
-return Clock;
-};
-
-const PlatformBadge = ({ platform }) => {
-const text = platform && typeof platform === 'string' && platform.length > 20 ? platform.substring(0, 20) + "..." : platform;
-return (
-
-{text || "FACEBOOK"}
-
-);
-};
+import SettingsPage from './pages/SettingsPage';
 
 export default function App() {
 const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -220,9 +176,13 @@ setAiFeedback(feedback);
 finally { setIsAnalyzing(false); }
 };
 
+// =======================================================
+// MOTOR DE MINERAÇÃO V3
+// =======================================================
 const startMining = async () => {
 setMiningError(''); setSystemLogs([]); setMinDaysFilter(0); setVisibleAdsCount(24);
 const token = apifyToken.trim(); const actor = actorId.trim();
+
 if (!token) { setMiningError("Configure o Token da Apify nas Configurações."); return; }
 if (!miningKeyword.trim()) { setMiningError("Introduza uma palavra-chave."); return; }
 
@@ -509,7 +469,7 @@ Descoberta
         <PenTool className="w-5 h-5"/> Gerador de Criativos
       </button>
       <button onClick={() => setActiveTab('cloner')} className={`w-full text-left p-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'cloner' ? 'bg-fuchsia-600/10 text-fuchsia-400 border border-fuchsia-500/20' : 'hover:bg-slate-800 text-slate-400'}`}>
-        <Copy className="w-5 h-5"/> Engenheiro de Funis
+        <Copy className="w-5 h-5"/> Clonador de Páginas
       </button>
 
       <div className="mt-auto pt-6">
@@ -523,49 +483,17 @@ Descoberta
   <main className="flex-1 overflow-y-auto relative" onScroll={handleScroll}>
     
     {/* ROTEAMENTO DE ABAS MODULARES */}
-    {activeTab === 'generator' && (
-       <div className="flex flex-col items-center justify-center py-20 px-4 text-center h-full">
-         <div className="w-24 h-24 bg-indigo-500/10 border border-indigo-500/20 rounded-full flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(99,102,241,0.2)]">
-           <PenTool className="w-10 h-10 text-indigo-400" />
-         </div>
-         <h2 className="text-3xl font-bold text-white mb-4">Gerador de Criativos IA</h2>
-         <p className="text-slate-400 max-w-xl mx-auto text-lg leading-relaxed mb-8">
-           O seu laboratório de alta conversão. Em breve, a IA irá pegar nas copys que você encontrou no Radar e transformá-las em roteiros de vídeo virais (VSL/TikTok).
-         </p>
-         <button disabled className="bg-indigo-600/50 text-indigo-200 border border-indigo-500/30 px-8 py-3 rounded-xl font-bold flex items-center gap-2 cursor-not-allowed">
-           <Loader2 className="w-5 h-5 animate-spin" /> Em Desenvolvimento...
-         </button>
-       </div>
-    )}
-
+    {activeTab === 'generator' && <GeneratorPage />}
     {activeTab === 'cloner' && <ClonerPage />}
-    
     {activeTab === 'settings' && (
-        <div className="max-w-2xl mx-auto p-4 md:p-8">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-xl">
-                <h2 className="text-2xl font-bold text-white mb-2 flex items-center gap-2"><Settings className="text-green-500"/> Configurações de API</h2>
-                <div className="space-y-6 mt-8">
-                  <div className="bg-slate-950 p-5 rounded-xl border border-slate-800">
-                    <h3 className="text-lg font-bold text-slate-200 mb-4 flex items-center gap-2"><Zap className="text-green-500"/> Extração (Apify)</h3>
-                    <label className="block text-sm font-bold text-slate-400 mb-2">Token da API</label>
-                    <input type="password" value={apifyToken} onChange={e => setApifyToken(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-white outline-none mb-4" />
-                    <label className="block text-sm font-bold text-slate-400 mb-2">ID do Actor</label>
-                    <input type="text" value={actorId} onChange={e => setActorId(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-slate-300 outline-none" />
-                  </div>
-
-                  <div className="bg-slate-950 p-5 rounded-xl border border-slate-800">
-                    <h3 className="text-lg font-bold text-slate-200 mb-4 flex items-center gap-2"><Sparkles className="text-indigo-500"/> Cérebro IA (Análise)</h3>
-                    <select value={aiProvider} onChange={e => setAiProvider(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-white outline-none mb-4">
-                        <option value="chatgpt">ChatGPT / OpenAI</option>
-                        <option value="gemini">Google Gemini</option>
-                    </select>
-                    <label className="block text-sm font-bold text-slate-400 mb-2 mt-4">Chave de API do {aiProvider === 'chatgpt' ? 'ChatGPT' : 'Gemini'}</label>
-                    <input type="password" value={aiProvider === 'chatgpt' ? chatGptToken : geminiToken} onChange={e => aiProvider === 'chatgpt' ? setChatGptToken(e.target.value) : setGeminiToken(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-white outline-none mb-2" />
-                  </div>
-                  <button onClick={handleSaveSettings} className="bg-green-600 w-full hover:bg-green-500 px-8 py-4 rounded-xl text-white font-bold transition-colors">Guardar Configurações</button>
-                </div>
-            </div>
-        </div>
+       <SettingsPage 
+          apifyToken={apifyToken} setApifyToken={setApifyToken}
+          actorId={actorId} setActorId={setActorId}
+          aiProvider={aiProvider} setAiProvider={setAiProvider}
+          geminiToken={geminiToken} setGeminiToken={setGeminiToken}
+          chatGptToken={chatGptToken} setChatGptToken={setChatGptToken}
+          handleSaveSettings={handleSaveSettings}
+       />
     )}
 
     {/* NÚCLEO DO RADAR (Dashboard / Cofre) */}
