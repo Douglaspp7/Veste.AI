@@ -254,25 +254,71 @@ function GeneratorPage() {
       return;
     }
 
+    if (!videoFile) {
+      setErrorMsg("Nenhum vídeo carregado. Faça o upload do vídeo primeiro.");
+      return;
+    }
+
     setIsGeneratingPrompt(true);
     setErrorMsg('');
     setVideoPrompt('');
-    setStatusMsg('');
+    setStatusMsg('A iniciar o motor de Storyboard IA...');
 
     try {
-      if (videoFile.size > 6 * 1024 * 1024) {
-         throw new Error("O seu vídeo é muito pesado para ser analisado visualmente pela Gemini no navegador (Limitação de Base64). Para gerar prompt visual, o vídeo não pode passar de 6MB. Tente um trecho menor.");
-      }
-
-      const endpointUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiToken}`;
+      // 1. Criar um leitor de vídeo fantasma (oculto) para fatiar o vídeo sem incomodar o utilizador
+      setStatusMsg('A fatiar o vídeo em múltiplas cenas temporais...');
+      const hiddenVideo = document.createElement('video');
+      hiddenVideo.src = videoUrl;
+      hiddenVideo.muted = true;
+      hiddenVideo.playsInline = true;
       
-      const aiPrompt = "You are an expert AI Video Prompt Engineer. Watch this video carefully. Generate a highly detailed, cinematic prompt in ENGLISH so I can recreate this exact visual scene using AI video generators like Runway Gen-3, Kling, or Sora. Describe the subject, their appearance, clothing, actions, the environment, lighting, camera angle, and camera movement. DO NOT describe any text, captions, graphics, or watermarks on the screen. Focus ONLY on the live-action or 3D animation visuals. Keep it cohesive and highly descriptive. Output ONLY the English prompt, ready to copy-paste.";
+      // Esperar que o vídeo oculto carregue os metadados
+      await new Promise((resolve) => {
+        hiddenVideo.onloadedmetadata = resolve;
+      });
+
+      const duration = hiddenVideo.duration;
+      if (!duration || isNaN(duration)) throw new Error("Não foi possível ler a duração do vídeo.");
+
+      // Calcular o número de frames (Tirar 1 frame a cada 2-3 segundos, max 10 frames para não estoirar o limite)
+      const numFrames = Math.min(Math.max(Math.floor(duration / 2.5), 4), 10); 
+      const interval = duration / numFrames;
+      
+      const canvas = document.createElement('canvas');
+      canvas.width = 480; // Baixa resolução para poupar o payload
+      canvas.height = (hiddenVideo.videoHeight / hiddenVideo.videoWidth) * 480;
+      const ctx = canvas.getContext('2d');
 
       const parts = [
-        { text: aiPrompt },
-        { inlineData: { mimeType: videoMime, data: videoBase64 } }
+        { text: "You are an Expert AI Video Prompt Engineer. I will provide you with a chronological storyboard of sequential keyframes from an ad video, along with their timestamps in seconds. Analyze the full sequence, camera movements, character actions, environment, and transitions. Generate a highly detailed, chronological cinematic prompt in ENGLISH so I can recreate this full video sequence using AI video generators (like Sora, Kling, Runway Gen-3). Break the prompt down chronologically (e.g., [0s - 3s] The scene opens with... [3s - 6s] The camera pans to...). IGNORE ALL TEXT, CAPTIONS, OR WATERMARKS on the screen. Focus strictly on the live-action or 3D animation aesthetics. Output ONLY the English prompt." }
       ];
 
+      for (let i = 0; i < numFrames; i++) {
+        const targetTime = i * interval;
+        hiddenVideo.currentTime = targetTime;
+        
+        // Esperar que o vídeo chegue a esse tempo exato
+        await new Promise((resolve) => {
+          hiddenVideo.addEventListener('seeked', function handler() {
+             hiddenVideo.removeEventListener('seeked', handler);
+             resolve();
+          });
+        });
+
+        // Tirar o print
+        ctx.drawImage(hiddenVideo, 0, 0, canvas.width, canvas.height);
+        const base64 = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
+        
+        // Adicionar ao pacote do Gemini
+        parts.push({ text: `Scene at ${Math.round(targetTime)} seconds:` });
+        parts.push({ inlineData: { mimeType: "image/jpeg", data: base64 } });
+      }
+
+      setStatusMsg('Storyboard montado! A enviar para o cérebro Gemini...');
+      
+      // Usar o Gemini 1.5 Flash (Super rápido para analisar lotes de imagens)
+      const endpointUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiToken}`;
+      
       const response = await fetch(endpointUrl, {
           method: 'POST', 
           headers: { 'Content-Type': 'application/json' },
@@ -281,8 +327,9 @@ function GeneratorPage() {
       
       if (!response.ok) {
           const errData = await response.json().catch(() => ({}));
-          throw new Error(`Falha Gemini Vision: ${errData.error?.message || "O ficheiro é demasiado grande."}`);
+          throw new Error(`Falha Gemini Vision: ${errData.error?.message || response.statusText}`);
       }
+      
       const data = await response.json();
       const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "Erro ao gerar prompt.";
       
@@ -290,6 +337,7 @@ function GeneratorPage() {
     } catch (err) {
       setErrorMsg(err.message);
     } finally {
+      setStatusMsg('');
       setIsGeneratingPrompt(false);
     }
   };
