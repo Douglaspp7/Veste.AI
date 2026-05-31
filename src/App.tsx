@@ -7,7 +7,7 @@ import {
   Heart, Filter, Video, Bookmark, DollarSign, Clock, CheckCircle, Flame, Library,
   ArrowUpDown, ShieldAlert, SplitSquareHorizontal, Rocket, Trophy, PenTool, Copy,
   Search, RefreshCw, LayoutTemplate, ArrowRightLeft, MonitorPlay, Check, HelpCircle, Upload,
-  Mic, Play, Pause, VolumeX, Type, FileAudio, Download, Wand2, FileText
+  Mic, Play, Pause, VolumeX, Volume2, Type, FileAudio, Download, Wand2, FileText
 } from 'lucide-react';
 
 // ============================================================================
@@ -87,9 +87,9 @@ function SettingsPage({
                 <option value="chatgpt">ChatGPT / OpenAI (GPT-4o Vision)</option>
                 <option value="gemini">Google Gemini (Gemini 1.5 Pro)</option>
             </select>
-            <label className="block text-sm font-bold text-slate-400 mb-2 mt-4">Chave de API do ChatGPT</label>
+            <label className="block text-sm font-bold text-slate-400 mb-2 mt-4">Chave de API do ChatGPT (Recomendada para Transcrição Whisper)</label>
             <input type="password" value={chatGptToken} onChange={e => setChatGptToken(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-white outline-none mb-2" />
-            <label className="block text-sm font-bold text-slate-400 mb-2 mt-4">Chave de API do Google Gemini (Obrigatória para TTS de Vozes)</label>
+            <label className="block text-sm font-bold text-slate-400 mb-2 mt-4">Chave de API do Google Gemini (Obrigatória para Vozes e Dublagem)</label>
             <input type="password" value={geminiToken} onChange={e => setGeminiToken(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-white outline-none mb-2" />
           </div>
 
@@ -100,10 +100,10 @@ function SettingsPage({
 }
 
 // ============================================================================
-// NOVO: GERADOR DE CRIATIVOS E ESTÚDIO DE VÍDEO IA
+// GERADOR DE CRIATIVOS E ESTÚDIO DE VÍDEO IA
 // ============================================================================
 function GeneratorPage() {
-  const [step, setStep] = useState(1); // 1: Upload, 2: Transcrever/Reescrever, 3: Voz/Preview
+  const [step, setStep] = useState(1);
   const [videoFile, setVideoFile] = useState(null);
   const [videoUrl, setVideoUrl] = useState('');
   const [videoBase64, setVideoBase64] = useState('');
@@ -114,7 +114,7 @@ function GeneratorPage() {
   const [errorMsg, setErrorMsg] = useState('');
 
   const [originalScript, setOriginalScript] = useState('');
-  const [strategy, setStrategy] = useState('rewrite_same'); // 'rewrite_same' ou 'new_angles'
+  const [strategy, setStrategy] = useState('rewrite_same');
   const [newScript, setNewScript] = useState('');
 
   const [selectedVoice, setSelectedVoice] = useState('Puck');
@@ -137,8 +137,8 @@ function GeneratorPage() {
   const handleVideoUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
-      if (file.size > 20 * 1024 * 1024) {
-        setErrorMsg("Para o processamento no navegador, o vídeo deve ter menos de 20MB.");
+      if (file.size > 25 * 1024 * 1024) {
+        setErrorMsg("Para o processamento no navegador, o vídeo deve ter menos de 25MB.");
         return;
       }
       setVideoFile(file);
@@ -157,35 +157,76 @@ function GeneratorPage() {
 
   const transcribeVideo = async () => {
     const geminiToken = localStorage.getItem('adsniper_gemini_token');
-    if (!geminiToken) {
-      setErrorMsg("A chave da API do Google Gemini é obrigatória nas Configurações para transcrição de vídeo.");
+    const gptToken = localStorage.getItem('adsniper_gpt_token');
+
+    if (!geminiToken && !gptToken) {
+      setErrorMsg("É obrigatório configurar a Chave de API da OpenAI (recomendado) ou da Google Gemini nas Configurações para realizar a transcrição.");
       return;
     }
 
     setIsProcessing(true);
-    setStatusMsg("A IA está assistindo ao vídeo e transcrevendo o áudio...");
+    setStatusMsg("A extrair áudio e a transcrever...");
     setErrorMsg('');
 
     try {
-      const endpointUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${geminiToken}`;
-      
-      const parts = [
-        { text: "Transcreva o áudio deste vídeo com precisão. Retorne APENAS o texto falado, sem marcações ou comentários adicionais." },
-        { inlineData: { mimeType: videoMime, data: videoBase64 } }
-      ];
+      // PREFERÊNCIA 1: Usar OpenAI Whisper se a chave estiver disponível
+      // Motivo: Suporta upload de arquivo nativo (FormData), aceita até 25MB fácil, não dá erro de payload.
+      if (gptToken) {
+        setStatusMsg("A transcrever usando Inteligência Artificial Whisper (OpenAI)...");
+        const formData = new FormData();
+        formData.append("file", videoFile);
+        formData.append("model", "whisper-1");
+        formData.append("response_format", "text"); // Retorna apenas o texto puro
 
-      const response = await fetch(endpointUrl, {
-          method: 'POST', 
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: parts }] })
-      });
-      
-      if (!response.ok) throw new Error("Falha ao contatar a Gemini API para transcrição.");
-      const data = await response.json();
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "Nenhuma fala detectada.";
-      
-      setOriginalScript(text.trim());
-      setNewScript(text.trim()); // Inicia com o mesmo texto
+        const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${gptToken}` },
+          body: formData
+        });
+
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({}));
+          throw new Error(`Erro OpenAI Whisper: ${err.error?.message || response.statusText}`);
+        }
+        
+        const text = await response.text();
+        setOriginalScript(text.trim());
+        setNewScript(text.trim());
+        setIsProcessing(false);
+        return;
+      }
+
+      // PREFERÊNCIA 2: Fallback para Google Gemini (via Base64 - Limite de tamanho crítico)
+      if (geminiToken) {
+        if (videoFile.size > 6 * 1024 * 1024) {
+           throw new Error("O seu vídeo é muito pesado para ser transcrito pela Gemini no navegador (Limitação de Base64). Por favor, adicione a chave da OpenAI (ChatGPT) nas Configurações para usar o Whisper, que suporta vídeos até 25MB.");
+        }
+
+        setStatusMsg("A transcrever usando Inteligência Artificial Google Gemini...");
+        const endpointUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${geminiToken}`;
+        
+        const parts = [
+          { text: "Transcreva o áudio deste vídeo com precisão. Retorne APENAS o texto falado, sem marcações ou comentários adicionais." },
+          { inlineData: { mimeType: videoMime, data: videoBase64 } }
+        ];
+
+        const response = await fetch(endpointUrl, {
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts: parts }] })
+        });
+        
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            console.error("Gemini Error:", errData);
+            throw new Error(`Falha Gemini: ${errData.error?.message || "O ficheiro é demasiado grande ou o formato não é suportado."}`);
+        }
+        const data = await response.json();
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "Nenhuma fala detectada.";
+        
+        setOriginalScript(text.trim());
+        setNewScript(text.trim());
+      }
     } catch (err) {
       setErrorMsg(err.message);
     } finally {
@@ -212,21 +253,23 @@ function GeneratorPage() {
     try {
       let resultText = "";
       if (provider === 'chatgpt') {
-        if (!chatGptToken) throw new Error("Token ChatGPT ausente.");
+        if (!chatGptToken) throw new Error("Token ChatGPT ausente. Vá às configurações.");
         const res = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${chatGptToken}` },
             body: JSON.stringify({ model: 'gpt-4o-mini', messages: [{ role: 'user', content: prompt }] })
         });
         const data = await res.json();
+        if (data.error) throw new Error(data.error.message);
         resultText = data.choices[0].message.content;
       } else {
-        if (!geminiToken) throw new Error("Token Gemini ausente.");
+        if (!geminiToken) throw new Error("Token Gemini ausente. Vá às configurações.");
         const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiToken}`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
         });
         const data = await res.json();
+        if (data.error) throw new Error(data.error.message);
         resultText = data.candidates?.[0]?.content?.parts?.[0]?.text;
       }
       setNewScript(resultText.trim().replace(/\*/g, ''));
@@ -245,7 +288,7 @@ function GeneratorPage() {
 
     const geminiToken = localStorage.getItem('adsniper_gemini_token');
     if (!geminiToken) {
-      setErrorMsg("A chave da API do Google Gemini é obrigatória para gerar as vozes ultrarrealistas.");
+      setErrorMsg("A chave da API do Google Gemini é OBRIGATÓRIA nas Configurações para gerar as vozes ultrarrealistas.");
       return;
     }
 
@@ -273,7 +316,10 @@ function GeneratorPage() {
           body: JSON.stringify(payload)
       });
 
-      if (!response.ok) throw new Error("Falha na geração de áudio (TTS). Verifique sua quota/token.");
+      if (!response.ok) {
+        const errData = await response.json().catch(()=>({}));
+        throw new Error(`Falha na geração de áudio: ${errData.error?.message || response.statusText}`);
+      }
       
       const result = await response.json();
       const part = result?.candidates?.[0]?.content?.parts?.[0];
@@ -361,7 +407,7 @@ function GeneratorPage() {
               <input type="file" accept="video/mp4,video/webm,video/mov" onChange={handleVideoUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
               <Upload className="w-10 h-10 text-slate-600 group-hover:text-indigo-400 mx-auto mb-3 transition-colors" />
               <span className="font-bold text-slate-300 group-hover:text-white transition-colors">Selecionar Vídeo</span>
-              <p className="text-xs text-slate-500 mt-2">MP4 ou WebM (Max 20MB)</p>
+              <p className="text-xs text-slate-500 mt-2">MP4 ou WebM</p>
             </div>
           </div>
         </div>
@@ -392,7 +438,7 @@ function GeneratorPage() {
                 placeholder={isProcessing && !originalScript ? "Ouvindo o vídeo e escrevendo..." : "O script original do vídeo aparecerá aqui..."}
                 value={originalScript}
                 onChange={(e) => setOriginalScript(e.target.value)}
-                readOnly={isProcessing}
+                readOnly={isProcessing && !originalScript}
               ></textarea>
             </div>
 
@@ -471,7 +517,7 @@ function GeneratorPage() {
                   {step === 3 && isPlaying && (
                     <div className="absolute inset-x-0 bottom-24 p-4 flex justify-center pointer-events-none">
                        <div className="bg-black/60 backdrop-blur-sm border border-white/10 px-4 py-3 rounded-xl max-w-[90%] text-center">
-                          <p className="text-white font-bold text-sm leading-tight text-shadow-sm shadow-black">
+                          <p className="text-white font-bold text-sm leading-tight shadow-black">
                             {newScript.substring(0, 80)}...
                           </p>
                        </div>
@@ -670,70 +716,6 @@ export default function App() {
   const handleScroll = (e) => {
     const bottom = e.target.scrollHeight - e.target.scrollTop <= e.target.clientHeight + 600;
     if (bottom) setVisibleAdsCount(prev => prev + 24);
-  };
-
-  const callChatGPT = async (prompt, token) => {
-    if (!token) throw new Error("Chave da OpenAI (ChatGPT) não configurada.");
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: 'É um Especialista de Elite em Facebook Ads e Copywriting.' },
-          { role: 'user', content: prompt }
-        ],
-        temperature: 0.7
-      })
-    });
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      if (response.status === 429 || err.error?.type === 'insufficient_quota') throw new Error("Saldo esgotado na OpenAI (ChatGPT). Por favor adicione fundos.");
-      throw new Error(err.error?.message || "Erro de ligação à OpenAI");
-    }
-    const data = await response.json();
-    return data.choices[0].message.content;
-  };
-
-  const callGeminiWithRetry = async (prompt, token, retries = 3) => {
-    let apiKey = token || "";
-    let modelOptions = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-pro"];
-    if (!apiKey) modelOptions = ["gemini-2.5-flash-preview-09-2025"];
-    const delays = [1000, 2000, 4000];
-    let attempt = 0; let currentModelIndex = 0;
-    while (attempt <= retries) {
-      try {
-        const model = modelOptions[currentModelIndex];
-        const endpointUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-        const response = await fetch(endpointUrl, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-        });
-        if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          if (response.status === 404 && currentModelIndex < modelOptions.length - 1) { currentModelIndex++; continue; }
-          throw new Error(errData.error?.message || `Erro ${response.status} na Google Gemini`);
-        }
-        const data = await response.json();
-        return data.candidates?.[0]?.content?.parts?.[0]?.text || "Resposta vazia da IA.";
-      } catch (err) {
-        if (err.message.includes('Failed to fetch')) throw new Error("O navegador bloqueou a Google API.");
-        if (attempt === retries) throw new Error(`Falha Gemini: ${err.message}`);
-        await new Promise(r => setTimeout(r, delays[attempt])); attempt++;
-      }
-    }
-  };
-
-  const analyzeAdWithAI = async (ad, type = 'copy') => {
-    setIsAnalyzing(true); setAiAnalysisType(type); setAiFeedback("");
-    let prompt = type === 'copy'
-      ? `Atue como Especialista de Facebook Ads. Analise: Anunciante: ${ad.advertiser}, Copy: "${ad.copy}". Dê: 1. PONTOS FORTES 2. PONTOS FRACOS 3. COPY OTIMIZADA (AIDA/PAS com emojis e CTA).`
-      : `Atue como Guionista de Vídeos (TikTok/VSL). Baseado nisto: "${ad.copy}". Crie um Guião Curto (30-60s): 1. HOOK 2. PROBLEMA 3. SOLUÇÃO 4. CTA.`;
-    try {
-      let feedback = aiProvider === 'chatgpt' ? await callChatGPT(prompt, chatGptToken.trim()) : await callGeminiWithRetry(prompt, geminiToken.trim());
-      setAiFeedback(feedback);
-    } catch (err) { setAiFeedback(err.message); }
-    finally { setIsAnalyzing(false); }
   };
 
   const startMining = async () => {
@@ -1027,9 +1009,6 @@ export default function App() {
 
       <main className="flex-1 overflow-y-auto relative" onScroll={handleScroll}>
 
-        {/* ========================================================= */}
-        {/* ROTEAMENTO DE ABAS MODULARES */}
-        {/* ========================================================= */}
         {activeTab === 'generator' && <GeneratorPage />}
 
         {activeTab === 'settings' && (
@@ -1050,7 +1029,6 @@ export default function App() {
           </div>
         )}
 
-        {/* NÚCLEO DO RADAR (Dashboard / Cofre) */}
         {(activeTab === 'dashboard' || activeTab === 'vault') && (
           <div className="max-w-7xl mx-auto p-4 md:p-8">
 
