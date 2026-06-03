@@ -190,8 +190,13 @@ export default function App() {
   };
 
   const applyShortcut = (type) => {
-    // Remove as aspas se o usuário tiver digitado, para não bugar a correspondência ampla do Meta
-    const current = miningKeyword.replace(/["']/g, '').trim(); 
+    let current = miningKeyword.replace(/["']/g, '').trim(); 
+    
+    // Se o utilizador clicar noutro atalho, extrai apenas a primeira palavra (o nicho)
+    // para evitar que a barra de pesquisa fique um caos gigante.
+    if (current.includes(' OR ')) {
+       current = current.split(' ')[0]; 
+    }
     
     let newKeyword = "";
     if (type === 'ebook') {
@@ -270,23 +275,26 @@ export default function App() {
     setMiningProgress(10); setMiningStatusMsg('A ligar aos servidores da Apify...');
 
     const safeActorId = actor.replace('/', '~');
+    
+    // DIVISÃO INTELIGENTE: Separa os atalhos 'OR' em múltiplas pesquisas exatas!
+    const queries = miningKeyword.split(' OR ').map(q => q.trim()).filter(q => q);
 
     try {
       let payload = { 
-        searchQueries: [miningKeyword.trim()], 
+        searchQueries: queries, 
         countries: searchCountry, 
         activeStatus: "ACTIVE", 
         adType: "ALL", 
         maxResultsPerQuery: searchDepth 
       };
 
-      // Compatibilidade com diferentes bots da Apify
+      // Compatibilidade com diferentes bots da Apify para suportar multi-buscas nativamente
       if (safeActorId.includes('3853UUZQG6pjjdw11') || safeActorId.includes('memo23')) {
-        let qs = `country=${searchCountry === 'ALL' ? 'ALL' : searchCountry}&q=${encodeURIComponent(miningKeyword.trim())}`;
-        payload = { startUrls: [{ url: `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&${qs}` }], proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ["RESIDENTIAL"] }, maxItems: searchDepth };
+        const startUrls = queries.map(q => ({ url: `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=${searchCountry === 'ALL' ? 'ALL' : searchCountry}&q=${encodeURIComponent(q)}` }));
+        payload = { startUrls, proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ["RESIDENTIAL"] }, maxItems: searchDepth * queries.length };
       } else if (!safeActorId.includes('dz_omar')) {
-        let qs = `country=${searchCountry === 'ALL' ? 'ALL' : searchCountry}&q=${encodeURIComponent(miningKeyword.trim())}`;
-        payload = { startUrls: [{ url: `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&${qs}` }], resultsLimit: searchDepth };
+        const startUrls = queries.map(q => ({ url: `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=${searchCountry === 'ALL' ? 'ALL' : searchCountry}&q=${encodeURIComponent(q)}` }));
+        payload = { startUrls, resultsLimit: searchDepth * queries.length };
       }
 
       setMiningProgress(20); setMiningStatusMsg('A iniciar missão de espionagem no Meta...');
@@ -303,7 +311,7 @@ export default function App() {
       const runData = await runResponse.json();
       const runId = runData.data.id;
 
-      setMiningProgress(30); setMiningStatusMsg(`A extrair até ${searchDepth} anúncios da Biblioteca...`);
+      setMiningProgress(30); setMiningStatusMsg(`A extrair anúncios (pesquisando ${queries.length} variações)...`);
 
       let finished = false; let timeoutCounter = 0;
 
