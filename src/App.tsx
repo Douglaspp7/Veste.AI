@@ -199,6 +199,24 @@ export default function App() {
     if (bottom) setVisibleAdsCount(prev => prev + 24);
   };
 
+  const applyShortcut = (type) => {
+    // Remove as aspas se o usuário tiver digitado, para não bugar a fórmula
+    const current = miningKeyword.replace(/["']/g, '').trim(); 
+    
+    let newKeyword = "";
+    if (type === 'ebook') {
+      newKeyword = current ? `"${current}" "e-book" OR "${current}" "pdf" OR "${current}" "guia"` : '"e-book" OR "pdf" OR "guia gratuito" OR "planilha"';
+    } else if (type === 'checkout') {
+      newKeyword = current ? `"${current}" pay.kiwify OR "${current}" perfectpay OR "${current}" hotmart` : 'pay.kiwify OR go.perfectpay OR pay.hotmart OR ticto';
+    } else if (type === 'vsl') {
+      newKeyword = current ? `"${current}" vturb OR "${current}" "assista ao vídeo"` : 'vturb OR "assista ao vídeo" OR sl.app';
+    } else if (type === 'wpp') {
+      newKeyword = current ? `"${current}" wa.me OR "${current}" "zap"` : 'wa.me OR "grupo vip" OR "chama no zap"';
+    }
+    
+    setMiningKeyword(newKeyword);
+  };
+
   const analyzeAdWithAI = async (ad, type) => {
     setIsAnalyzing(true);
     setAiAnalysisType(type);
@@ -619,19 +637,19 @@ export default function App() {
                 <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-slate-800/50">
                   <span className="text-xs font-bold text-slate-500 uppercase mr-2 flex items-center gap-1"><Crosshair size={14}/> Atalhos Especiais:</span>
                   
-                  <button onClick={() => setMiningKeyword('"e-book" OR "pdf" OR "guia gratuito" OR "planilha"')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-colors">
+                  <button onClick={() => applyShortcut('ebook')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-colors">
                     <BookOpen size={14} /> E-books & PDFs
                   </button>
                   
-                  <button onClick={() => setMiningKeyword('pay.kiwify OR go.perfectpay OR pay.hotmart OR ticto')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors">
+                  <button onClick={() => applyShortcut('checkout')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors">
                     <DollarSign size={14} /> Apenas Checkouts Diretos
                   </button>
                   
-                  <button onClick={() => setMiningKeyword('vturb OR "assista ao vídeo" OR sl.app')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-fuchsia-500/10 text-fuchsia-400 border border-fuchsia-500/20 hover:bg-fuchsia-500/20 transition-colors">
+                  <button onClick={() => applyShortcut('vsl')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-fuchsia-500/10 text-fuchsia-400 border border-fuchsia-500/20 hover:bg-fuchsia-500/20 transition-colors">
                     <MonitorPlay size={14} /> VSLs (Vídeos Longos)
                   </button>
                   
-                  <button onClick={() => setMiningKeyword('wa.me OR "grupo vip" OR "chama no zap"')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-green-500/10 text-green-400 border border-green-500/20 hover:bg-green-500/20 transition-colors">
+                  <button onClick={() => applyShortcut('wpp')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-green-500/10 text-green-400 border border-green-500/20 hover:bg-green-500/20 transition-colors">
                     <MessageCircle size={14} /> Funil de WhatsApp (X1)
                   </button>
                 </div>
