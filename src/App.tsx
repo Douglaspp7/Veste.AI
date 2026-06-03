@@ -6,7 +6,7 @@ import {
   AlertCircle, Code, ExternalLink, Calendar, ThumbsUp, Layers, Sparkles, Bot,
   Heart, Filter, Video, Bookmark, DollarSign, Clock, CheckCircle, Flame, Library,
   ArrowUpDown, ShieldAlert, SplitSquareHorizontal, Rocket, Trophy, Copy,
-  Search, RefreshCw, ArrowRightLeft, Check, HelpCircle
+  Search, RefreshCw, ArrowRightLeft, Check, HelpCircle, Globe, Maximize
 } from 'lucide-react';
 
 // ============================================================================
@@ -111,10 +111,14 @@ export default function App() {
   const [savedAds, setSavedAds] = useState([]);
   const [visibleAdsCount, setVisibleAdsCount] = useState(24);
 
-  // Filtros e Ordenação
+  // Filtros, Ordenação e Controles de Busca Avançados
   const [minDaysFilter, setMinDaysFilter] = useState(0);
   const [mediaTypeFilter, setMediaTypeFilter] = useState('ALL');
   const [sortBy, setSortBy] = useState('score');
+  
+  // NOVOS CONTROLES DE ESPIÃO
+  const [searchCountry, setSearchCountry] = useState('BR');
+  const [searchLimit, setSearchLimit] = useState('500');
 
   // Estado da Mineração
   const [isMining, setIsMining] = useState(false);
@@ -258,17 +262,22 @@ export default function App() {
     addLog('A iniciar ligação com a Apify...');
 
     const safeActorId = actor.replace('/', '~');
+    const numericLimit = parseInt(searchLimit, 10);
 
     try {
-      let payload = { searchQueries: [miningKeyword.trim()], countries: "BR", activeStatus: "ACTIVE", adType: "ALL", maxResultsPerQuery: 500 };
+      let payload = { searchQueries: [miningKeyword.trim()], countries: searchCountry, activeStatus: "ACTIVE", adType: "ALL", maxResultsPerQuery: numericLimit };
 
       if (safeActorId.includes('3853UUZQG6pjjdw11') || safeActorId.includes('memo23')) {
-        payload = { startUrls: [{ url: `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=BR&q=${encodeURIComponent(miningKeyword.trim())}` }], proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ["RESIDENTIAL"] }, maxItems: 500 };
+        let qs = `active_status=active&ad_type=all&q=${encodeURIComponent(miningKeyword.trim())}`;
+        if (searchCountry !== "ALL") qs += `&country=${searchCountry}`;
+        payload = { startUrls: [{ url: `https://www.facebook.com/ads/library/?${qs}` }], proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ["RESIDENTIAL"] }, maxItems: numericLimit };
       } else if (!safeActorId.includes('dz_omar')) {
-        payload = { startUrls: [{ url: `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=BR&q=${encodeURIComponent(miningKeyword.trim())}` }], resultsLimit: 500 };
+        let qs = `active_status=active&ad_type=all&q=${encodeURIComponent(miningKeyword.trim())}`;
+        if (searchCountry !== "ALL") qs += `&country=${searchCountry}`;
+        payload = { startUrls: [{ url: `https://www.facebook.com/ads/library/?${qs}` }], resultsLimit: numericLimit };
       }
 
-      setMiningProgress(20); setMiningStatusMsg('A iniciar missão de espionagem no Meta...');
+      setMiningProgress(20); setMiningStatusMsg(`A iniciar missão de espionagem (${searchCountry}) limite ${numericLimit}...`);
 
       const runResponse = await fetch(`https://api.apify.com/v2/acts/${safeActorId}/runs?token=${token}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
@@ -444,12 +453,24 @@ export default function App() {
         ad.isCreativeKing = ad.daysActive > 30 && ad.adCount >= 10;
         ad.isBlackHat = ['linktr.ee', 'bit.ly', 'shorturl', 'hotm.art', 'go.hotmart', 'monetizze', 'kiwify.com', 'perfectpay'].some(d => ad.targetUrl.toLowerCase().includes(d)) || (getBaseDomain(ad.targetUrl).length > 25);
 
+        // NOVA LÓGICA DE VELOCIDADE DE ESCALA (SCALE VELOCITY)
+        // Descobre quantos anúncios foram criados POR DIA em média.
+        const scaleVelocity = ad.adCount / Math.max(ad.daysActive, 1);
+        ad.scaleVelocity = scaleVelocity;
+        
+        // Se tem mais de 1.5 anúncios novos por dia E menos de 15 dias de vida = EXPLOSÃO
+        ad.isViralScaling = scaleVelocity >= 1.5 && ad.adCount >= 5 && ad.daysActive <= 15;
+
         const adScoreCalc = Math.min((ad.adCount / 30) * 50, 50);
         const daysScoreCalc = Math.min((ad.daysActive / 60) * 30, 30);
         const platformScoreCalc = Math.min((ad.platformCount / 4) * 20, 20);
 
         let totalScore = Math.round(adScoreCalc + daysScoreCalc + platformScoreCalc);
-        if (ad.isAggressiveScale) totalScore = Math.min(totalScore + 10, 100);
+        
+        // Bônus agressivos para joias
+        if (ad.isViralScaling) totalScore = Math.min(totalScore + 25, 100); 
+        else if (ad.isAggressiveScale) totalScore = Math.min(totalScore + 10, 100);
+        
         if (ad.isCreativeKing) totalScore = Math.min(totalScore + 15, 100);
 
         ad.score = totalScore || 0;
@@ -554,21 +575,44 @@ export default function App() {
           <div className="max-w-7xl mx-auto p-4 md:p-8">
 
             {activeTab === 'dashboard' && (
-              <div className="flex flex-col md:flex-row gap-4 mb-6 bg-slate-900 p-4 rounded-2xl border border-slate-800 shadow-lg">
-                <div className="flex-1 flex items-center bg-slate-950 border border-slate-800 rounded-xl px-4 py-1 focus-within:border-green-500 transition-colors">
-                  <Zap className="w-5 h-5 text-green-500 mr-2" />
-                  <input
-                    className="w-full bg-transparent p-2 text-white outline-none placeholder:text-slate-600"
-                    placeholder="Digite um nicho (ex: emagrecer, apostas, curso)..."
-                    value={miningKeyword}
-                    onChange={e => setMiningKeyword(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && startMining()}
-                    disabled={isMining}
-                  />
+              <div className="flex flex-col mb-6 bg-slate-900 p-4 rounded-2xl border border-slate-800 shadow-lg gap-4">
+                <div className="flex flex-col md:flex-row gap-4">
+                  <div className="flex-1 flex items-center bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 focus-within:border-green-500 transition-colors">
+                    <Zap className="w-5 h-5 text-green-500 mr-2 shrink-0" />
+                    <input
+                      className="w-full bg-transparent p-1.5 text-white outline-none placeholder:text-slate-600"
+                      placeholder="Nicho, concorrente ou footprint (ex: pay.kiwify)..."
+                      value={miningKeyword}
+                      onChange={e => setMiningKeyword(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && startMining()}
+                      disabled={isMining}
+                    />
+                  </div>
+                  
+                  <div className="flex gap-2">
+                    <div className="flex items-center bg-slate-950 border border-slate-800 rounded-xl px-3 py-1">
+                      <Globe className="w-4 h-4 text-slate-400 mr-2" />
+                      <select value={searchCountry} onChange={e => setSearchCountry(e.target.value)} disabled={isMining} className="bg-transparent text-sm font-bold text-slate-200 outline-none cursor-pointer">
+                        <option value="BR">Brasil</option>
+                        <option value="US">USA (Gringos)</option>
+                        <option value="ALL">Global (Todos)</option>
+                      </select>
+                    </div>
+                    
+                    <div className="flex items-center bg-slate-950 border border-slate-800 rounded-xl px-3 py-1 hidden sm:flex">
+                      <Maximize className="w-4 h-4 text-slate-400 mr-2" />
+                      <select value={searchLimit} onChange={e => setSearchLimit(e.target.value)} disabled={isMining} className="bg-transparent text-sm font-bold text-slate-200 outline-none cursor-pointer">
+                        <option value="500">Rápido (500)</option>
+                        <option value="1000">Médio (1000)</option>
+                        <option value="3000">Profundo (3000)</option>
+                      </select>
+                    </div>
+
+                    <button onClick={startMining} disabled={isMining} className="bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all">
+                      {isMining ? <><Loader2 className="animate-spin w-5 h-5" /> ...</> : 'Iniciar Radar'}
+                    </button>
+                  </div>
                 </div>
-                <button onClick={startMining} disabled={isMining} className="bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white px-8 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all">
-                  {isMining ? <><Loader2 className="animate-spin w-5 h-5" /> Procurar...</> : 'Iniciar Radar'}
-                </button>
               </div>
             )}
 
@@ -685,7 +729,8 @@ export default function App() {
                     <div className="flex flex-wrap gap-2 mb-3">
                       <FusionBadge text={ad.niche} />
                       <FusionBadge icon={StatusToIcon(ad.score || 0)} text={ad.status || "Teste"} variant={StatusToVariant(ad.score || 0)} />
-                      {ad.isAggressiveScale && <FusionBadge icon={Rocket} text="Acelerador" variant="danger" />}
+                      {ad.isViralScaling && <FusionBadge icon={Flame} text="Escala Viral" variant="warning" className="animate-pulse shadow-[0_0_10px_rgba(245,158,11,0.5)]" />}
+                      {!ad.isViralScaling && ad.isAggressiveScale && <FusionBadge icon={Rocket} text="Acelerador" variant="danger" />}
                       {ad.isABTesting && <FusionBadge icon={SplitSquareHorizontal} text="A/B Testing" variant="brand" />}
                       {ad.isCreativeKing && <FusionBadge icon={Trophy} text="Criativo Rei" variant="gold" />}
                       {ad.isBlackHat && <FusionBadge icon={ShieldAlert} text="Agressivo" variant="danger" />}
@@ -777,8 +822,8 @@ export default function App() {
                   <p className="text-indigo-400 font-bold text-lg">{selectedAd.adCount}</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-slate-500 text-[10px] font-bold uppercase mb-1">Preço / Ticket</p>
-                  <p className="text-emerald-400 font-bold text-lg">{selectedAd.ticketPrice}</p>
+                  <p className="text-slate-500 text-[10px] font-bold uppercase mb-1">Tração (Ads/Dia)</p>
+                  <p className="text-emerald-400 font-bold text-lg">{(selectedAd.scaleVelocity || 0).toFixed(1)}</p>
                 </div>
               </div>
 
