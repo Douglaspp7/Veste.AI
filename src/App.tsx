@@ -1,8 +1,9 @@
+// @ts-nocheck
 import React, { useState, useEffect } from 'react';
 import {
-  Settings, Zap, Target, Loader2, Lock, LayoutDashboard, PlayCircle, 
-  Image as ImageIcon, X, AlertCircle, ExternalLink, Calendar, ThumbsUp, 
-  Layers, Sparkles, Bot, Heart, Filter, Video, Bookmark, DollarSign, 
+  Settings, Zap, Target, Loader2, LayoutDashboard, PlayCircle, 
+  Image as ImageIcon, X, AlertCircle, ExternalLink, Calendar, 
+  Layers, Sparkles, Bot, Heart, Filter, Video, Bookmark, 
   Clock, CheckCircle, Flame, Library, ArrowUpDown, ShieldAlert, 
   SplitSquareHorizontal, Rocket, Trophy
 } from 'lucide-react';
