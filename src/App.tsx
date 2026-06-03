@@ -6,7 +6,8 @@ import {
   AlertCircle, Code, ExternalLink, Calendar, ThumbsUp, Layers, Sparkles, Bot,
   Heart, Filter, Video, Bookmark, DollarSign, Clock, CheckCircle, Flame, Library,
   ArrowUpDown, ShieldAlert, SplitSquareHorizontal, Rocket, Trophy, Copy,
-  Search, RefreshCw, ArrowRightLeft, Check, HelpCircle, Globe, Maximize
+  Search, RefreshCw, ArrowRightLeft, Check, HelpCircle, Globe, Maximize,
+  BookOpen, MonitorPlay, MessageCircle
 } from 'lucide-react';
 
 // ============================================================================
@@ -613,6 +614,28 @@ export default function App() {
                     </button>
                   </div>
                 </div>
+
+                {/* ATALHOS SNIPER (FOOTPRINTS DE ALTA CONVERSÃO) */}
+                <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-slate-800/50">
+                  <span className="text-xs font-bold text-slate-500 uppercase mr-2 flex items-center gap-1"><Crosshair size={14}/> Atalhos Especiais:</span>
+                  
+                  <button onClick={() => setMiningKeyword('"e-book" OR "pdf" OR "guia gratuito" OR "planilha"')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-colors">
+                    <BookOpen size={14} /> E-books & PDFs
+                  </button>
+                  
+                  <button onClick={() => setMiningKeyword('pay.kiwify OR go.perfectpay OR pay.hotmart OR ticto')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors">
+                    <DollarSign size={14} /> Apenas Checkouts Diretos
+                  </button>
+                  
+                  <button onClick={() => setMiningKeyword('vturb OR "assista ao vídeo" OR sl.app')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-fuchsia-500/10 text-fuchsia-400 border border-fuchsia-500/20 hover:bg-fuchsia-500/20 transition-colors">
+                    <MonitorPlay size={14} /> VSLs (Vídeos Longos)
+                  </button>
+                  
+                  <button onClick={() => setMiningKeyword('wa.me OR "grupo vip" OR "chama no zap"')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-green-500/10 text-green-400 border border-green-500/20 hover:bg-green-500/20 transition-colors">
+                    <MessageCircle size={14} /> Funil de WhatsApp (X1)
+                  </button>
+                </div>
+
               </div>
             )}
 
