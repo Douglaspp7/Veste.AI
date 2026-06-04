@@ -79,7 +79,6 @@ export default function App() {
   const [minDaysFilter, setMinDaysFilter] = useState(0);
   const [mediaTypeFilter, setMediaTypeFilter] = useState('ALL');
   const [sortBy, setSortBy] = useState('score');
-  const [funnelFilter, setFunnelFilter] = useState('ALL');
   
   const [searchDepth, setSearchDepth] = useState(500);
   const [searchCountry, setSearchCountry] = useState('BR');
@@ -134,7 +133,7 @@ export default function App() {
 
   useEffect(() => {
     setVisibleAdsCount(24);
-  }, [minDaysFilter, mediaTypeFilter, sortBy, activeTab, miningKeyword, funnelFilter]);
+  }, [minDaysFilter, mediaTypeFilter, sortBy, activeTab, miningKeyword]);
 
   const handleSaveSettings = () => {
     localStorage.setItem('adsniper_apify_token', apifyToken.trim());
@@ -269,7 +268,7 @@ export default function App() {
 
   const startMining = async () => {
     setMiningError(''); setSystemLogs([]); setMinDaysFilter(0); setVisibleAdsCount(24);
-    setMiningStats(null); setFunnelFilter('ALL'); 
+    setMiningStats(null); 
     const token = apifyToken.trim(); const actor = actorId.trim();
     
     if (!token) { setMiningError("Configure o Token da Apify nas Configurações."); return; }
@@ -423,18 +422,6 @@ export default function App() {
 
             let platformsRaw = Array.isArray(rootItem.platforms) ? rootItem.platforms : Array.isArray(coreItem.publisherPlatforms) ? coreItem.publisherPlatforms : Array.isArray(coreItem.platforms) ? coreItem.platforms : ["FACEBOOK"];
 
-            // DETEÇÃO DE FUNIL (Adicionado)
-            let funnelType = "Direto";
-            const textToAnalyze = (copyText + " " + targetUrl).toLowerCase();
-
-            if (textToAnalyze.includes('wa.me') || textToAnalyze.includes('api.whatsapp') || textToAnalyze.includes('chat.whatsapp')) {
-                funnelType = "WhatsApp";
-            } else if (textToAnalyze.includes('typeform') || textToAnalyze.includes('quiz') || textToAnalyze.includes('responda') || textToAnalyze.includes('descubra') || textToAnalyze.includes('questionario')) {
-                funnelType = "Quiz";
-            } else if (textToAnalyze.includes('vturb') || textToAnalyze.includes('sl.app') || textToAnalyze.includes('vimeo') || textToAnalyze.includes('wistia') || textToAnalyze.includes('panda') || textToAnalyze.includes('assista')) {
-                funnelType = "VSL";
-            }
-
             // AGRUPAMENTO OTIMIZADO: Agrupa por anunciante para detectar o Volume e a Força de Escala
             const signature = pageId ? `page_${pageId}` : `adv_${advertiser.trim().toLowerCase()}`;
             let safeRawData = "";
@@ -450,11 +437,6 @@ export default function App() {
                 if (daysActive > existingAd.daysActive) existingAd.daysActive = daysActive;
                 existingAd.allDates.push(daysActive);
                 existingAd.allCopies.add(copyText.substring(0, 30).replace(/\s+/g, ' ').trim());
-                
-                // Sobrescreve funil se encontrar rastro mais avançado
-                if (funnelType === "WhatsApp" || funnelType === "Quiz" || (funnelType === "VSL" && existingAd.funnelType === "Direto")) {
-                    existingAd.funnelType = funnelType;
-                }
                 
                 let shouldSwapCreative = false;
                 if (!existingAd.isVideo && isVideo) shouldSwapCreative = true;
@@ -474,8 +456,7 @@ export default function App() {
                   daysActive: daysActive, ticketPrice: ticketPrice, adCount: countForThisArchive, bestIndividualAdCount: countForThisArchive,
                   archiveIds: initialArchiveIds, allDates: [daysActive], allCopies: new Set([copyText.substring(0, 30).replace(/\s+/g, ' ').trim()]), 
                   niche: niche, formatType: formatType, platformCount: platformsRaw.length, platform: platformsRaw.join(', '), likesCount: Math.floor(Math.random() * 800) + 100,
-                  type: isVideo ? "Vídeo" : "Imagem", isVideo: isVideo, mediaUrl: mediaUrl, videoUrl: videoUrl, color: "from-slate-700 to-slate-900", rawData: safeRawData,
-                  funnelType: funnelType // Guardamos o funil classificado!
+                  type: isVideo ? "Vídeo" : "Imagem", isVideo: isVideo, mediaUrl: mediaUrl, videoUrl: videoUrl, color: "from-slate-700 to-slate-900", rawData: safeRawData
                 });
             }
         } catch (itemError) { console.error("Erro num anúncio ignorado:", itemError); }
@@ -521,7 +502,6 @@ export default function App() {
     let filtered = sourceAds.filter(ad => {
         if ((ad.daysActive || 0) < minDaysFilter) return false;
         if (mediaTypeFilter !== 'ALL' && ad.type !== mediaTypeFilter) return false;
-        if (funnelFilter !== 'ALL' && ad.funnelType !== funnelFilter) return false;
         return true;
     });
     return filtered.sort((a, b) => {
@@ -705,15 +685,6 @@ export default function App() {
                               <option value="Imagem">Apenas Imagens</option>
                           </select>
                       </div>
-                      <div className="flex items-center gap-3 bg-slate-950 px-4 py-2 rounded-lg border border-slate-800">
-                          <span className="text-xs text-slate-500 font-bold uppercase">Funil:</span>
-                          <select value={funnelFilter} onChange={(e) => setFunnelFilter(e.target.value)} className="bg-transparent text-sm font-bold text-white outline-none cursor-pointer">
-                              <option value="ALL">Todos os Funis</option>
-                              <option value="Quiz">Apenas Quizzes</option>
-                              <option value="VSL">Apenas VSLs</option>
-                              <option value="WhatsApp">Apenas WhatsApp (X1)</option>
-                          </select>
-                      </div>
 
                       <div className="flex-1"></div>
 
@@ -796,9 +767,6 @@ export default function App() {
 
                       <div className="flex flex-wrap gap-2 mb-3">
                           <FusionBadge text={ad.niche} />
-                          {ad.funnelType === "Quiz" && <FusionBadge icon={Target} text="Quiz Funnel" variant="purple" />}
-                          {ad.funnelType === "VSL" && <FusionBadge icon={Video} text="VSL Direta" variant="warning" />}
-                          {ad.funnelType === "WhatsApp" && <FusionBadge icon={MessageCircle} text="Funil X1 (WhatsApp)" variant="success" />}
                           {ad.isViral && <FusionBadge icon={Flame} text="Alta Tração" variant="warning" className="animate-pulse shadow-[0_0_10px_rgba(234,179,8,0.5)] border-yellow-500/50" />}
                           <FusionBadge icon={StatusToIcon(ad.score || 0)} text={ad.status || "Teste"} variant={StatusToVariant(ad.score || 0)} />
                           {ad.isAggressiveScale && <FusionBadge icon={Rocket} text="Acelerador" variant="danger" />}
@@ -862,9 +830,6 @@ export default function App() {
                       <h2 className="font-bold text-xl text-white leading-none mb-2">{selectedAd.advertiser}</h2>
                       <div className="flex flex-wrap gap-2">
                          <FusionBadge text={selectedAd.status} variant={StatusToVariant(selectedAd.score || 0)} icon={StatusToIcon(selectedAd.score || 0)} />
-                         {selectedAd.funnelType === "Quiz" && <FusionBadge icon={Target} text="Quiz Funnel" variant="purple" />}
-                         {selectedAd.funnelType === "VSL" && <FusionBadge icon={Video} text="VSL Direta" variant="warning" />}
-                         {selectedAd.funnelType === "WhatsApp" && <FusionBadge icon={MessageCircle} text="Funil X1 (WhatsApp)" variant="success" />}
                          {selectedAd.isAggressiveScale && <FusionBadge icon={Rocket} text="Acelerador" variant="danger" />}
                          {selectedAd.isABTesting && <FusionBadge icon={SplitSquareHorizontal} text="A/B Testing" variant="brand" />}
                          {selectedAd.isCreativeKing && <FusionBadge icon={Trophy} text="Criativo Rei" variant="gold" />}
@@ -976,7 +941,7 @@ export default function App() {
             </div>
 
             <div className="p-4 bg-slate-900 border-t border-slate-800 flex flex-col sm:flex-row gap-3">
-               {selectedAd.targetUrl && selectedAd.funnelType === "WhatsApp" ? (
+               {selectedAd.targetUrl && (selectedAd.targetUrl.toLowerCase().includes('wa.me') || selectedAd.targetUrl.toLowerCase().includes('api.whatsapp')) ? (
                    <a href={selectedAd.targetUrl} target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white py-3.5 rounded-xl transition-colors font-bold text-sm shadow-lg shadow-emerald-900/20">
                        <MessageCircle size={18} /> Abrir WhatsApp (Funil X1)
                    </a>
