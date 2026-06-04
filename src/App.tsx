@@ -6,7 +6,7 @@ import {
   AlertCircle, Code, ExternalLink, Calendar, ThumbsUp, Layers, Sparkles, Bot,
   Heart, Filter, Video, Bookmark, DollarSign, Clock, CheckCircle, Flame, Library, 
   ArrowUpDown, ShieldAlert, SplitSquareHorizontal, Rocket, Trophy, Copy, Download,
-  Ghost
+  Ghost, Database
 } from 'lucide-react';
 
 // ============================================================================
@@ -19,7 +19,8 @@ const FusionBadge = ({ icon: Icon, text, variant = 'default', className = '' }) 
     warning: "bg-orange-500/10 text-orange-400 border-orange-500/20",
     danger: "bg-rose-500/10 text-rose-400 border-rose-500/20",
     brand: "bg-indigo-500/10 text-indigo-400 border-indigo-500/20",
-    gold: "bg-yellow-500/10 text-yellow-400 border-yellow-500/30"
+    gold: "bg-yellow-500/10 text-yellow-400 border-yellow-500/30",
+    purple: "bg-purple-500/10 text-purple-400 border-purple-500/30"
   };
 
   return (
@@ -65,19 +66,20 @@ export default function App() {
   const [passwordInput, setPasswordInput] = useState('');
   const [loginError, setLoginError] = useState(false);
 
-  // Navegação (Apenas Radar, Cofre e Configurações)
+  // Navegação
   const [activeTab, setActiveTab] = useState('dashboard');
   
   // Dados Core
   const [ads, setAds] = useState([]);
   const [savedAds, setSavedAds] = useState([]);
   const [visibleAdsCount, setVisibleAdsCount] = useState(24);
+  const [miningStats, setMiningStats] = useState(null); // Estatísticas de busca
 
   // Filtros e Ordenação
   const [minDaysFilter, setMinDaysFilter] = useState(0);
   const [mediaTypeFilter, setMediaTypeFilter] = useState('ALL');
   const [sortBy, setSortBy] = useState('score');
-  const [funnelFilter, setFunnelFilter] = useState('ALL');
+  const [funnelFilter, setFunnelFilter] = useState('ALL'); // Filtro de Quiz vs VSL
   
   const [searchDepth, setSearchDepth] = useState(500);
   const [searchCountry, setSearchCountry] = useState('BR');
@@ -89,7 +91,6 @@ export default function App() {
   const [systemLogs, setSystemLogs] = useState([]);
   const [miningProgress, setMiningProgress] = useState(0);
   const [miningStatusMsg, setMiningStatusMsg] = useState('');
-  const [lastSearchStats, setLastSearchStats] = useState(null); // NOVO: Guarda as estatísticas reais
 
   // APIs Tokens
   const [apifyToken, setApifyToken] = useState('');
@@ -133,7 +134,7 @@ export default function App() {
 
   useEffect(() => {
     setVisibleAdsCount(24);
-  }, [minDaysFilter, mediaTypeFilter, sortBy, funnelFilter, activeTab, miningKeyword]);
+  }, [minDaysFilter, mediaTypeFilter, sortBy, activeTab, miningKeyword, funnelFilter]);
 
   const handleSaveSettings = () => {
     localStorage.setItem('adsniper_apify_token', apifyToken.trim());
@@ -162,7 +163,6 @@ export default function App() {
     if (bottom) setVisibleAdsCount(prev => prev + 24);
   };
 
-  // FUNCIONALIDADE TIPO SWIPEOFFERS: DOWNLOADS
   const downloadMedia = async (url, filename) => {
     if (!url) return;
     try {
@@ -182,23 +182,16 @@ export default function App() {
     }
   };
 
-  // ============================================================================
-  // FUNÇÃO DE PESQUISA EDUCACIONAL: BURLAR CLOAKER BÁSICO
-  // Injeta parâmetros simulando um clique real da plataforma do Facebook/Instagram
-  // ============================================================================
   const handleBypassCloaker = (url) => {
       try {
           const urlObj = new URL(url);
-          // Gera um fbclid (Facebook Click ID) falso e insere as UTMs comuns
           const fakeFbclid = 'IwAR' + Math.random().toString(36).substring(2, 12) + Math.random().toString(36).substring(2, 12);
           urlObj.searchParams.set('fbclid', fakeFbclid);
           urlObj.searchParams.set('utm_source', 'facebook');
           urlObj.searchParams.set('utm_medium', 'cpc');
           urlObj.searchParams.set('utm_campaign', 'bypass_research');
-          
           window.open(urlObj.toString(), '_blank', 'noopener,noreferrer');
       } catch (e) {
-          // Fallback caso não seja possível parsear a URL
           window.open(url, '_blank', 'noopener,noreferrer');
       }
   };
@@ -276,8 +269,7 @@ export default function App() {
 
   const startMining = async () => {
     setMiningError(''); setSystemLogs([]); setMinDaysFilter(0); setVisibleAdsCount(24);
-    setFunnelFilter('ALL'); // Força a mostrar todos ao iniciar uma nova busca
-    setLastSearchStats(null);
+    setMiningStats(null); setFunnelFilter('ALL'); // Resetar filtros
     const token = apifyToken.trim(); const actor = actorId.trim();
     
     if (!token) { setMiningError("Configure o Token da Apify nas Configurações."); return; }
@@ -348,7 +340,8 @@ export default function App() {
           else if (!rawAd.type || rawAd.page_id || rawAd.id || rawAd.node || rawAd.ad) adsToProcess.push(rawAd);
       });
       if (adsToProcess.length === 0) adsToProcess = validAds; 
-      setMiningProgress(95); setMiningStatusMsg('Motor V3: A aplicar Rankeamento e Desagrupamento...');
+
+      setMiningProgress(95); setMiningStatusMsg('Motor V3: A aplicar Deteção e Rankeamento...');
 
       const getBaseDomain = (url) => {
           if (!url || url.includes('facebook.com') || url.includes('fb.me') || url.includes('instagram.com')) return 'no-link';
@@ -356,7 +349,6 @@ export default function App() {
       };
 
       const advertiserMap = new Map();
-      const totalRawFound = adsToProcess.length; // Quantidade bruta real extraída
 
       adsToProcess.forEach((rawData, index) => {
         try {
@@ -402,13 +394,14 @@ export default function App() {
                 targetUrl = linksInCopy.find(l => !l.includes('wa.me') && !l.includes('facebook')) || linksInCopy[0];
             }
             
-            // INTELIGÊNCIA MELHORADA: Detecção de Funil (Quiz / VSL)
-            const combinedText = (targetUrl + " " + copyText + " " + title).toLowerCase();
-            let detectedFunnel = "Direto";
-            if (/(quiz|questionario|typeform|responda|descubra|teste|perfil|pesquisa\s+rápida)/i.test(combinedText)) {
-                detectedFunnel = "Quiz";
-            } else if (/(vturb|sl\.app|panda|vimeo|wistia|assista|vsl|play)/i.test(combinedText)) {
-                detectedFunnel = "VSL";
+            // LÓGICA DE DETECÇÃO DE FUNIL (QUIZ VS VSL)
+            let funnelType = "Direto";
+            const analysisText = `${copyLower} ${targetUrl.toLowerCase()} ${title.toLowerCase()}`;
+            if (analysisText.match(/(vturb|sl\.app|vimeo|wistia|panda|vídeo|assista|play|assistir)/)) {
+                funnelType = "VSL";
+            }
+            if (analysisText.match(/(quiz|typeform|questionario|questionário|teste|pesquisa|responda|descubra|pergunta|trivia|outgrow)/)) {
+                funnelType = "Quiz";
             }
 
             const libraryUrl = pageId ? `https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=ALL&view_all_page_id=${pageId}` : (coreItem.ad_url || rootItem.ad_url || "");
@@ -437,10 +430,8 @@ export default function App() {
 
             let platformsRaw = Array.isArray(rootItem.platforms) ? rootItem.platforms : Array.isArray(coreItem.publisherPlatforms) ? coreItem.publisherPlatforms : Array.isArray(coreItem.platforms) ? coreItem.platforms : ["FACEBOOK"];
 
-            // VOLTOU PARA AGRUPAMENTO POR PÁGINA: Agrupar todos os anúncios do mesmo anunciante
-            // para somar a força (AdCount) e detectar as verdadeiras joias de escala, limpando a tela.
+            // AGRUPAMENTO: Mantém tudo agrupado por anunciante para detectar joias!
             const signature = pageId ? `page_${pageId}` : `adv_${advertiser.trim().toLowerCase()}`;
-            
             let safeRawData = "";
             try { safeRawData = JSON.stringify(rawData, null, 2); } catch(e) { safeRawData = "Omitido por segurança."; }
 
@@ -455,6 +446,11 @@ export default function App() {
                 existingAd.allDates.push(daysActive);
                 existingAd.allCopies.add(copyText.substring(0, 30).replace(/\s+/g, ' ').trim());
                 
+                // Atualiza o tipo de funil se encontrar algo mais forte nas variações
+                if (funnelType === "Quiz" || (funnelType === "VSL" && existingAd.funnelType === "Direto")) {
+                    existingAd.funnelType = funnelType;
+                }
+                
                 let shouldSwapCreative = false;
                 if (!existingAd.isVideo && isVideo) shouldSwapCreative = true;
                 else if (existingAd.isVideo === isVideo && countForThisArchive > existingAd.bestIndividualAdCount) shouldSwapCreative = true;
@@ -465,10 +461,6 @@ export default function App() {
                     existingAd.title = title; existingAd.bestIndividualAdCount = countForThisArchive;
                     if (targetUrl) existingAd.targetUrl = targetUrl;
                     if (ticketPrice !== "Oculto") existingAd.ticketPrice = ticketPrice;
-                    
-                    // Mantém o funil se já detectou Quiz antes (tem maior prioridade)
-                    if (detectedFunnel === "Quiz") existingAd.detectedFunnel = "Quiz";
-                    else if (detectedFunnel === "VSL" && existingAd.detectedFunnel !== "Quiz") existingAd.detectedFunnel = "VSL";
                 }
             } else {
                 const initialArchiveIds = {}; initialArchiveIds[adId] = countForThisArchive;
@@ -476,8 +468,9 @@ export default function App() {
                   id: adId, title: title, advertiser: advertiser, profilePic: profilePic, copy: copyText, targetUrl: targetUrl, libraryUrl: libraryUrl,
                   daysActive: daysActive, ticketPrice: ticketPrice, adCount: countForThisArchive, bestIndividualAdCount: countForThisArchive,
                   archiveIds: initialArchiveIds, allDates: [daysActive], allCopies: new Set([copyText.substring(0, 30).replace(/\s+/g, ' ').trim()]), 
-                  niche: niche, detectedFunnel: detectedFunnel, formatType: formatType, platformCount: platformsRaw.length, platform: platformsRaw.join(', '), likesCount: Math.floor(Math.random() * 800) + 100,
+                  niche: niche, formatType: formatType, platformCount: platformsRaw.length, platform: platformsRaw.join(', '), likesCount: Math.floor(Math.random() * 800) + 100,
                   type: isVideo ? "Vídeo" : "Imagem", isVideo: isVideo, mediaUrl: mediaUrl, videoUrl: videoUrl, color: "from-slate-700 to-slate-900", rawData: safeRawData,
+                  funnelType: funnelType // Guarda o funil detectado
                 });
             }
         } catch (itemError) { console.error("Erro num anúncio ignorado:", itemError); }
@@ -508,8 +501,8 @@ export default function App() {
       });
 
       setAds(formattedAds.sort((a, b) => (b.score || 0) - (a.score || 0)));
-      setLastSearchStats({ raw: totalRawFound, unique: formattedAds.length });
-      setMiningProgress(100); setMiningStatusMsg(`Foram lidos ${totalRawFound} anúncios na Biblioteca!`);
+      setMiningStats({ raw: adsToProcess.length, processed: formattedAds.length });
+      setMiningProgress(100); setMiningStatusMsg('Radar Concluído com Sucesso!');
     } catch (error) {
       let displayError = error instanceof Error ? error.message : "Ocorreu um erro desconhecido.";
       setMiningError(displayError); addLog(`ERRO: ${displayError}`, 'error');
@@ -523,7 +516,7 @@ export default function App() {
     let filtered = sourceAds.filter(ad => {
         if ((ad.daysActive || 0) < minDaysFilter) return false;
         if (mediaTypeFilter !== 'ALL' && ad.type !== mediaTypeFilter) return false;
-        if (funnelFilter !== 'ALL' && ad.detectedFunnel !== funnelFilter) return false;
+        if (funnelFilter !== 'ALL' && ad.funnelType !== funnelFilter) return false; // Filtro de Funil (Quiz/VSL)
         return true;
     });
     return filtered.sort((a, b) => {
@@ -591,6 +584,7 @@ export default function App() {
 
       <main className="flex-1 overflow-y-auto relative" onScroll={handleScroll}>
         
+        {/* ABA: CONFIGURAÇÕES */}
         {activeTab === 'settings' && (
             <div className="max-w-2xl bg-slate-900 border border-slate-800 rounded-xl p-8 shadow-xl mx-auto mt-8">
                 <h2 className="text-2xl font-bold text-white mb-2 flex items-center gap-2"><Settings className="text-green-500"/> Configurações de API</h2>
@@ -617,9 +611,11 @@ export default function App() {
             </div>
         )}
 
+        {/* ABA: RADAR DE OFERTAS & COFRE */}
         {(activeTab === 'dashboard' || activeTab === 'vault') && (
             <div className="max-w-7xl mx-auto p-4 md:p-8">
               
+              {/* Barra de Pesquisa */}
               {activeTab === 'dashboard' && (
                   <div className="mb-6">
                     <div className="flex flex-col lg:flex-row gap-4 bg-slate-900 p-4 rounded-2xl border border-slate-800 shadow-lg mb-4">
@@ -653,24 +649,10 @@ export default function App() {
                         </button>
                       </div>
                     </div>
-
-                    <div className="flex flex-wrap items-center gap-2 px-2">
-                      <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mr-2 flex items-center gap-1">
-                        <Filter size={12}/> Tipo de Funil Detectado:
-                      </span>
-                      <select 
-                          value={funnelFilter} 
-                          onChange={e => setFunnelFilter(e.target.value)} 
-                          className="bg-slate-900 border border-slate-800 text-white rounded-lg px-4 py-1.5 outline-none cursor-pointer focus:border-green-500 text-xs font-bold transition-colors"
-                      >
-                          <option value="ALL">🎯 Todos os Funis</option>
-                          <option value="Quiz">📝 Apenas Quizzes</option>
-                          <option value="VSL">📺 Apenas VSLs (Vídeos)</option>
-                      </select>
-                    </div>
                   </div>
               )}
 
+              {/* Loader de Progresso */}
               {isMining && (
                   <div className="mb-6 p-5 bg-slate-900/80 border border-green-500/20 rounded-xl shadow-lg">
                       <div className="flex justify-between items-center text-sm mb-3 font-bold">
@@ -683,25 +665,46 @@ export default function App() {
                   </div>
               )}
 
+              {/* Barra de Estatísticas da Mineração */}
+              {miningStats && !isMining && activeTab === 'dashboard' && (
+                 <div className="mb-6 bg-green-500/10 border border-green-500/20 p-4 rounded-xl flex items-center gap-4 shadow-lg">
+                    <div className="p-2 bg-green-500/20 rounded-lg shrink-0">
+                       <Database className="text-green-400 w-6 h-6" />
+                    </div>
+                    <div>
+                       <p className="text-green-400 font-bold text-sm">Resumo da Extração Apify</p>
+                       <p className="text-slate-300 text-xs">Foram analisados <strong className="text-white">{miningStats.raw}</strong> anúncios brutos que correspondem a <strong className="text-white">{miningStats.processed}</strong> páginas/anunciantes únicas agrupadas pelo motor de escala.</p>
+                    </div>
+                 </div>
+              )}
+
+              {/* Barra de Filtros */}
               {(ads.length > 0 || activeTab === 'vault') && !isMining && (
                   <div className="mb-8 flex flex-wrap items-center gap-4 bg-slate-900/50 p-4 rounded-xl border border-slate-800/50">
                       <div className="flex items-center gap-2 text-slate-400 text-sm font-bold mr-2">
                           <Filter className="w-4 h-4"/> Filtros:
                       </div>
-                      
-                      {/* NOVO: Display das estatísticas reais */}
-                      {lastSearchStats && activeTab === 'dashboard' && (
-                         <div className="flex items-center gap-2 bg-emerald-500/10 text-emerald-400 px-3 py-2 rounded-lg border border-emerald-500/20 text-xs font-bold mr-2">
-                             <Database size={14}/> {lastSearchStats.raw} Anúncios Extraídos ➔ {lastSearchStats.unique} Criativos Únicos
-                         </div>
-                      )}
-
+                      <div className="flex items-center gap-3 bg-slate-950 px-4 py-2 rounded-lg border border-slate-800">
+                          <span className="text-xs text-slate-500 font-bold uppercase">Tempo no Ar:</span>
+                          <input type="range" min="0" max={calcMaxDays} step="1" value={minDaysFilter} onChange={(e) => setMinDaysFilter(Number(e.target.value))} className="w-32 accent-green-500 cursor-pointer" />
+                          <span className="text-sm font-bold text-green-400 w-16 text-right">+{minDaysFilter} dias</span>
+                      </div>
                       <div className="flex items-center gap-3 bg-slate-950 px-4 py-2 rounded-lg border border-slate-800">
                           <span className="text-xs text-slate-500 font-bold uppercase">Formato:</span>
                           <select value={mediaTypeFilter} onChange={(e) => setMediaTypeFilter(e.target.value)} className="bg-transparent text-sm font-bold text-white outline-none cursor-pointer">
                               <option value="ALL">Todos</option>
                               <option value="Vídeo">Apenas Vídeos</option>
                               <option value="Imagem">Apenas Imagens</option>
+                          </select>
+                      </div>
+
+                      {/* NOVO FILTRO DE FUNIL (QUIZ VS VSL) */}
+                      <div className="flex items-center gap-3 bg-slate-950 px-4 py-2 rounded-lg border border-slate-800">
+                          <span className="text-xs text-slate-500 font-bold uppercase">Funil:</span>
+                          <select value={funnelFilter} onChange={(e) => setFunnelFilter(e.target.value)} className="bg-transparent text-sm font-bold text-white outline-none cursor-pointer">
+                              <option value="ALL">Todos os Funis</option>
+                              <option value="Quiz">Apenas Quizzes</option>
+                              <option value="VSL">Apenas VSLs</option>
                           </select>
                       </div>
 
@@ -719,6 +722,7 @@ export default function App() {
                   </div>
               )}
 
+              {/* Tratamento Cofre Vazio e Erros */}
               {activeTab === 'vault' && savedAds.length === 0 && (
                  <div className="text-center py-20">
                     <Bookmark className="w-20 h-20 text-slate-800 mx-auto mb-4" />
@@ -734,6 +738,7 @@ export default function App() {
                  </div>
               )}
 
+              {}
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                 {adsToRender.map(ad => (
                   <div key={ad.id} onClick={() => setSelectedAd(ad)} className="bg-slate-900 rounded-3xl border border-slate-800 overflow-hidden hover:border-green-500/50 hover:shadow-green-900/20 hover:shadow-2xl transition-all cursor-pointer flex flex-col group relative">
@@ -786,13 +791,13 @@ export default function App() {
 
                       <div className="flex flex-wrap gap-2 mb-3">
                           <FusionBadge text={ad.niche} />
-                          {ad.detectedFunnel === 'Quiz' && <FusionBadge text="Quiz" variant="brand" />}
-                          {ad.detectedFunnel === 'VSL' && <FusionBadge text="VSL" variant="warning" />}
+                          {/* ETIQUETAS DE FUNIL (QUIZ/VSL) */}
+                          {ad.funnelType === "Quiz" && <FusionBadge icon={Target} text="Quiz Funnel" variant="purple" />}
+                          {ad.funnelType === "VSL" && <FusionBadge icon={Video} text="VSL Direta" variant="warning" />}
+                          
                           {ad.isViral && <FusionBadge icon={Flame} text="Alta Tração" variant="warning" className="animate-pulse shadow-[0_0_10px_rgba(234,179,8,0.5)] border-yellow-500/50" />}
                           <FusionBadge icon={StatusToIcon(ad.score || 0)} text={ad.status || "Teste"} variant={StatusToVariant(ad.score || 0)} />
                           {ad.isAggressiveScale && <FusionBadge icon={Rocket} text="Acelerador" variant="danger" />}
-                          {ad.isABTesting && <FusionBadge icon={SplitSquareHorizontal} text="A/B Testing" variant="brand" />}
-                          {ad.isCreativeKing && <FusionBadge icon={Trophy} text="Criativo Rei" variant="gold" />}
                           {ad.isBlackHat && <FusionBadge icon={ShieldAlert} text="Agressivo" variant="danger" />}
                       </div>
 
@@ -837,7 +842,7 @@ export default function App() {
 
       </main>
 
-      {/* MODAL DETALHES COM BOTÕES SWIPEOFFERS (DOWNLOADS) */}
+      {}
       {selectedAd && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-sm" onClick={() => setSelectedAd(null)}>
           <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
@@ -852,10 +857,9 @@ export default function App() {
                       <h2 className="font-bold text-xl text-white leading-none mb-2">{selectedAd.advertiser}</h2>
                       <div className="flex flex-wrap gap-2">
                          <FusionBadge text={selectedAd.status} variant={StatusToVariant(selectedAd.score || 0)} icon={StatusToIcon(selectedAd.score || 0)} />
-                         {selectedAd.detectedFunnel === 'Quiz' && <FusionBadge text="Quiz" variant="brand" />}
-                         {selectedAd.detectedFunnel === 'VSL' && <FusionBadge text="VSL" variant="warning" />}
+                         {selectedAd.funnelType === "Quiz" && <FusionBadge icon={Target} text="Quiz Funnel" variant="purple" />}
+                         {selectedAd.funnelType === "VSL" && <FusionBadge icon={Video} text="VSL Direta" variant="warning" />}
                          {selectedAd.isAggressiveScale && <FusionBadge icon={Rocket} text="Acelerador" variant="danger" />}
-                         {selectedAd.isABTesting && <FusionBadge icon={SplitSquareHorizontal} text="A/B Testing" variant="brand" />}
                          {selectedAd.isCreativeKing && <FusionBadge icon={Trophy} text="Criativo Rei" variant="gold" />}
                       </div>
                   </div>
@@ -871,7 +875,6 @@ export default function App() {
             
             <div className="p-6 overflow-y-auto flex-1">
               
-              {/* BLOCO DE EXTRAÇÃO DE MATERIAIS */}
               <div className="bg-slate-950 border border-slate-800 rounded-2xl p-5 mb-6">
                  <h3 className="font-bold text-slate-400 uppercase text-xs mb-3 flex items-center gap-2">
                      <Download size={14}/> Extrair Materiais
@@ -975,8 +978,9 @@ export default function App() {
                        <a href={selectedAd.targetUrl} target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-2 bg-rose-600 hover:bg-rose-500 text-white py-3.5 rounded-xl transition-colors font-bold text-sm shadow-lg shadow-rose-900/20">
                            <ShieldAlert size={18} /> Vendas (Risco BlackHat)
                        </a>
+                       {/* BOTÃO BURLAR CLOAKER AQUI */}
                        <button onClick={() => handleBypassCloaker(selectedAd.targetUrl)} className="flex-1 flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-500 text-white py-3.5 rounded-xl transition-colors font-bold text-sm shadow-lg shadow-purple-900/20">
-                           <Ghost size={18} /> Burlar Cloaker (Pesquisa)
+                           <Ghost size={18} /> Burlar Cloaker
                        </button>
                    </>
                ) : (
