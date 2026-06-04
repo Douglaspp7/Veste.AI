@@ -5,7 +5,8 @@ import {
   LayoutDashboard, PlayCircle, Image as ImageIcon, BarChart2, X, Terminal, 
   AlertCircle, Code, ExternalLink, Calendar, ThumbsUp, Layers, Sparkles, Bot,
   Heart, Filter, Video, Bookmark, DollarSign, Clock, CheckCircle, Flame, Library, 
-  ArrowUpDown, ShieldAlert, SplitSquareHorizontal, Rocket, Trophy, Copy, Download
+  ArrowUpDown, ShieldAlert, SplitSquareHorizontal, Rocket, Trophy, Copy, Download,
+  Ghost
 } from 'lucide-react';
 
 // ============================================================================
@@ -190,6 +191,27 @@ export default function App() {
     } catch (e) {
       window.open(url, '_blank');
     }
+  };
+
+  // ============================================================================
+  // FUNÇÃO DE PESQUISA EDUCACIONAL: BURLAR CLOAKER BÁSICO
+  // Injeta parâmetros simulando um clique real da plataforma do Facebook/Instagram
+  // ============================================================================
+  const handleBypassCloaker = (url) => {
+      try {
+          const urlObj = new URL(url);
+          // Gera um fbclid (Facebook Click ID) falso e insere as UTMs comuns
+          const fakeFbclid = 'IwAR' + Math.random().toString(36).substring(2, 12) + Math.random().toString(36).substring(2, 12);
+          urlObj.searchParams.set('fbclid', fakeFbclid);
+          urlObj.searchParams.set('utm_source', 'facebook');
+          urlObj.searchParams.set('utm_medium', 'cpc');
+          urlObj.searchParams.set('utm_campaign', 'bypass_research');
+          
+          window.open(urlObj.toString(), '_blank', 'noopener,noreferrer');
+      } catch (e) {
+          // Fallback caso não seja possível parsear a URL
+          window.open(url, '_blank', 'noopener,noreferrer');
+      }
   };
 
   const callChatGPT = async (prompt, token) => {
@@ -836,7 +858,7 @@ export default function App() {
             
             <div className="p-6 overflow-y-auto flex-1">
               
-              {/* BLOCO DE EXTRAÇÃO DE MATERIAIS (NOVO!) */}
+              {/* BLOCO DE EXTRAÇÃO DE MATERIAIS */}
               <div className="bg-slate-950 border border-slate-800 rounded-2xl p-5 mb-6">
                  <h3 className="font-bold text-slate-400 uppercase text-xs mb-3 flex items-center gap-2">
                      <Download size={14}/> Extrair Materiais
@@ -936,9 +958,14 @@ export default function App() {
                        <ExternalLink size={18} /> Abrir Página de Vendas
                    </a>
                ) : selectedAd.targetUrl && selectedAd.isBlackHat ? (
-                   <a href={selectedAd.targetUrl} target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-2 bg-rose-600 hover:bg-rose-500 text-white py-3.5 rounded-xl transition-colors font-bold text-sm shadow-lg shadow-rose-900/20">
-                       <ShieldAlert size={18} /> Vendas (Risco BlackHat)
-                   </a>
+                   <>
+                       <a href={selectedAd.targetUrl} target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-2 bg-rose-600 hover:bg-rose-500 text-white py-3.5 rounded-xl transition-colors font-bold text-sm shadow-lg shadow-rose-900/20">
+                           <ShieldAlert size={18} /> Vendas (Risco BlackHat)
+                       </a>
+                       <button onClick={() => handleBypassCloaker(selectedAd.targetUrl)} className="flex-1 flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-500 text-white py-3.5 rounded-xl transition-colors font-bold text-sm shadow-lg shadow-purple-900/20">
+                           <Ghost size={18} /> Burlar Cloaker (Pesquisa)
+                       </button>
+                   </>
                ) : (
                    <button disabled className="flex-1 flex items-center justify-center gap-2 bg-slate-800/50 text-slate-500 py-3.5 rounded-xl font-bold text-sm cursor-not-allowed border border-slate-800">
                        Vendas Indisponível
