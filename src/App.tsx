@@ -6,7 +6,7 @@ import {
   AlertCircle, Code, ExternalLink, Calendar, ThumbsUp, Layers, Sparkles, Bot,
   Heart, Filter, Video, Bookmark, DollarSign, Clock, CheckCircle, Flame, Library, 
   ArrowUpDown, ShieldAlert, SplitSquareHorizontal, Rocket, Trophy, Copy, Download,
-  Ghost, Database, MessageCircle
+  Ghost, Database, MessageCircle, Network, Link2, Search
 } from 'lucide-react';
 
 // ============================================================================
@@ -160,6 +160,42 @@ export default function App() {
   const handleScroll = (e) => {
     const bottom = e.target.scrollHeight - e.target.scrollTop <= e.target.clientHeight + 600; 
     if (bottom) setVisibleAdsCount(prev => prev + 24);
+  };
+
+  // ============================================================================
+  // FUNÇÕES DE ESPIONAGEM AVANÇADA (NOVO)
+  // ============================================================================
+  
+  // 1. Extração de UTMs (Raio-X de Rastreio)
+  const getTrackingParams = (url) => {
+      if (!url) return [];
+      try {
+          const urlObj = new URL(url);
+          const params = [];
+          urlObj.searchParams.forEach((value, key) => {
+              if (value && value.trim() !== '') params.push({ key, value });
+          });
+          return params;
+      } catch (e) { return []; }
+  };
+
+  // 2. Busca Reversa (Procurar outros anunciantes usando o mesmo domínio)
+  const handleReverseSearch = (url) => {
+      if (!url) return;
+      try {
+          const domain = new URL(url).hostname.replace('www.', '');
+          if (domain && !domain.includes('facebook') && !domain.includes('instagram')) {
+              setMiningKeyword(`"${domain}"`);
+              setSelectedAd(null);
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+              // Opcional: Descomente a linha abaixo se quiser que a busca inicie automaticamente
+              // setTimeout(() => startMining(), 500);
+          } else {
+              alert("Não é possível fazer busca reversa num link interno do Facebook/WhatsApp.");
+          }
+      } catch (e) {
+          alert("URL inválida para busca reversa.");
+      }
   };
 
   const downloadMedia = async (url, filename) => {
@@ -906,6 +942,36 @@ export default function App() {
                   </div>
               </div>
               
+              {/* BLOCO DE ESPIONAGEM DE RASTREIO E BUSCA REVERSA (NOVO!) */}
+              <div className="bg-slate-900 border border-slate-700/50 rounded-2xl p-5 mb-6">
+                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                    <h3 className="font-bold text-slate-300 flex items-center gap-2">
+                       <Network size={18} className="text-emerald-500"/> Inteligência de Domínio
+                    </h3>
+                    {selectedAd.targetUrl && (
+                        <button onClick={() => handleReverseSearch(selectedAd.targetUrl)} className="bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 text-xs rounded-lg font-bold transition-all flex items-center gap-1.5">
+                            <Search size={14}/> Busca Reversa de Afiliados
+                        </button>
+                    )}
+                 </div>
+
+                 {getTrackingParams(selectedAd.targetUrl).length > 0 ? (
+                     <div>
+                         <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mb-2 flex items-center gap-1"><Link2 size={12}/> Parâmetros Ocultos (UTMs)</p>
+                         <div className="flex flex-wrap gap-2">
+                             {getTrackingParams(selectedAd.targetUrl).map((param, i) => (
+                                 <div key={i} className="flex items-center text-xs bg-slate-950 border border-slate-800 rounded px-2 py-1">
+                                     <span className="text-slate-500 font-bold mr-1">{param.key}=</span>
+                                     <span className="text-emerald-400 font-mono truncate max-w-[150px]">{param.value}</span>
+                                 </div>
+                             ))}
+                         </div>
+                     </div>
+                 ) : (
+                     <div className="text-xs text-slate-500 font-medium">Nenhum parâmetro de rastreamento complexo encontrado neste link.</div>
+                 )}
+              </div>
+
               <div className="bg-indigo-950/20 border border-indigo-500/20 rounded-2xl p-5 mb-6">
                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
                     <h3 className="font-bold text-indigo-400 flex items-center gap-2">
