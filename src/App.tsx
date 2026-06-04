@@ -140,7 +140,7 @@ export default function App() {
 
   const callChatGPT = async (prompt, token) => {
     if (!token) throw new Error("Chave da OpenAI (ChatGPT) não configurada.");
-    const response = await fetch('[https://api.openai.com/v1/chat/completions](https://api.openai.com/v1/chat/completions)', {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({
@@ -890,4 +890,3 @@ export default function App() {
     </div>
   );
 }
-```
