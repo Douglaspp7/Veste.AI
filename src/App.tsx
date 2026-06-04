@@ -73,13 +73,13 @@ export default function App() {
   const [ads, setAds] = useState([]);
   const [savedAds, setSavedAds] = useState([]);
   const [visibleAdsCount, setVisibleAdsCount] = useState(24);
-  const [miningStats, setMiningStats] = useState(null); // Estatísticas de busca
+  const [miningStats, setMiningStats] = useState(null);
 
   // Filtros e Ordenação
   const [minDaysFilter, setMinDaysFilter] = useState(0);
   const [mediaTypeFilter, setMediaTypeFilter] = useState('ALL');
   const [sortBy, setSortBy] = useState('score');
-  const [funnelFilter, setFunnelFilter] = useState('ALL'); // Filtro de Quiz vs VSL
+  const [funnelFilter, setFunnelFilter] = useState('ALL');
   
   const [searchDepth, setSearchDepth] = useState(500);
   const [searchCountry, setSearchCountry] = useState('BR');
@@ -269,7 +269,7 @@ export default function App() {
 
   const startMining = async () => {
     setMiningError(''); setSystemLogs([]); setMinDaysFilter(0); setVisibleAdsCount(24);
-    setMiningStats(null); setFunnelFilter('ALL'); // Resetar filtros
+    setMiningStats(null); setFunnelFilter('ALL'); 
     const token = apifyToken.trim(); const actor = actorId.trim();
     
     if (!token) { setMiningError("Configure o Token da Apify nas Configurações."); return; }
@@ -394,7 +394,7 @@ export default function App() {
                 targetUrl = linksInCopy.find(l => !l.includes('wa.me') && !l.includes('facebook')) || linksInCopy[0];
             }
             
-            // CORREÇÃO: URL da Biblioteca formatada com os parâmetros exigidos pelo novo layout do Facebook
+            // CORREÇÃO: Link robusto usando o search_type=page obrigatório
             const libraryUrl = pageId 
                 ? `https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=${searchCountry === 'ALL' ? 'ALL' : searchCountry}&view_all_page_id=${pageId}&search_type=page` 
                 : (coreItem.ad_url || rootItem.ad_url || `https://www.facebook.com/ads/library/?id=${adId}`);
@@ -423,7 +423,19 @@ export default function App() {
 
             let platformsRaw = Array.isArray(rootItem.platforms) ? rootItem.platforms : Array.isArray(coreItem.publisherPlatforms) ? coreItem.publisherPlatforms : Array.isArray(coreItem.platforms) ? coreItem.platforms : ["FACEBOOK"];
 
-            // AGRUPAMENTO: Mantém tudo agrupado por anunciante para detectar joias!
+            // DETEÇÃO DE FUNIL (Adicionado)
+            let funnelType = "Direto";
+            const textToAnalyze = (copyText + " " + targetUrl).toLowerCase();
+
+            if (textToAnalyze.includes('wa.me') || textToAnalyze.includes('api.whatsapp') || textToAnalyze.includes('chat.whatsapp')) {
+                funnelType = "WhatsApp";
+            } else if (textToAnalyze.includes('typeform') || textToAnalyze.includes('quiz') || textToAnalyze.includes('responda') || textToAnalyze.includes('descubra') || textToAnalyze.includes('questionario')) {
+                funnelType = "Quiz";
+            } else if (textToAnalyze.includes('vturb') || textToAnalyze.includes('sl.app') || textToAnalyze.includes('vimeo') || textToAnalyze.includes('wistia') || textToAnalyze.includes('panda') || textToAnalyze.includes('assista')) {
+                funnelType = "VSL";
+            }
+
+            // AGRUPAMENTO OTIMIZADO: Agrupa por anunciante para detectar o Volume e a Força de Escala
             const signature = pageId ? `page_${pageId}` : `adv_${advertiser.trim().toLowerCase()}`;
             let safeRawData = "";
             try { safeRawData = JSON.stringify(rawData, null, 2); } catch(e) { safeRawData = "Omitido por segurança."; }
@@ -439,7 +451,7 @@ export default function App() {
                 existingAd.allDates.push(daysActive);
                 existingAd.allCopies.add(copyText.substring(0, 30).replace(/\s+/g, ' ').trim());
                 
-                // Atualiza o tipo de funil se encontrar algo mais forte nas variações
+                // Sobrescreve funil se encontrar rastro mais avançado
                 if (funnelType === "WhatsApp" || funnelType === "Quiz" || (funnelType === "VSL" && existingAd.funnelType === "Direto")) {
                     existingAd.funnelType = funnelType;
                 }
@@ -463,7 +475,7 @@ export default function App() {
                   archiveIds: initialArchiveIds, allDates: [daysActive], allCopies: new Set([copyText.substring(0, 30).replace(/\s+/g, ' ').trim()]), 
                   niche: niche, formatType: formatType, platformCount: platformsRaw.length, platform: platformsRaw.join(', '), likesCount: Math.floor(Math.random() * 800) + 100,
                   type: isVideo ? "Vídeo" : "Imagem", isVideo: isVideo, mediaUrl: mediaUrl, videoUrl: videoUrl, color: "from-slate-700 to-slate-900", rawData: safeRawData,
-                  funnelType: funnelType // Guarda o funil detectado
+                  funnelType: funnelType // Guardamos o funil classificado!
                 });
             }
         } catch (itemError) { console.error("Erro num anúncio ignorado:", itemError); }
@@ -494,7 +506,7 @@ export default function App() {
       });
 
       setAds(formattedAds.sort((a, b) => (b.score || 0) - (a.score || 0)));
-      setMiningStats({ raw: adsToProcess.length, processed: formattedAds.length });
+      setMiningStats({ raw: adsToProcess.length, processed: formattedAds.length }); // Guardar stats!
       setMiningProgress(100); setMiningStatusMsg('Radar Concluído com Sucesso!');
     } catch (error) {
       let displayError = error instanceof Error ? error.message : "Ocorreu um erro desconhecido.";
@@ -509,7 +521,7 @@ export default function App() {
     let filtered = sourceAds.filter(ad => {
         if ((ad.daysActive || 0) < minDaysFilter) return false;
         if (mediaTypeFilter !== 'ALL' && ad.type !== mediaTypeFilter) return false;
-        if (funnelFilter !== 'ALL' && ad.funnelType !== funnelFilter) return false; // Filtro de Funil (Quiz/VSL)
+        if (funnelFilter !== 'ALL' && ad.funnelType !== funnelFilter) return false;
         return true;
     });
     return filtered.sort((a, b) => {
@@ -577,7 +589,6 @@ export default function App() {
 
       <main className="flex-1 overflow-y-auto relative" onScroll={handleScroll}>
         
-        {/* ABA: CONFIGURAÇÕES */}
         {activeTab === 'settings' && (
             <div className="max-w-2xl bg-slate-900 border border-slate-800 rounded-xl p-8 shadow-xl mx-auto mt-8">
                 <h2 className="text-2xl font-bold text-white mb-2 flex items-center gap-2"><Settings className="text-green-500"/> Configurações de API</h2>
@@ -604,11 +615,9 @@ export default function App() {
             </div>
         )}
 
-        {/* ABA: RADAR DE OFERTAS & COFRE */}
         {(activeTab === 'dashboard' || activeTab === 'vault') && (
             <div className="max-w-7xl mx-auto p-4 md:p-8">
               
-              {/* Barra de Pesquisa */}
               {activeTab === 'dashboard' && (
                   <div className="mb-6">
                     <div className="flex flex-col lg:flex-row gap-4 bg-slate-900 p-4 rounded-2xl border border-slate-800 shadow-lg mb-4">
@@ -642,10 +651,17 @@ export default function App() {
                         </button>
                       </div>
                     </div>
+
+                    {/* DICA DE PESQUISA INTELIGENTE */}
+                    {miningKeyword.trim().split(/\s+/).length >= 3 && !miningKeyword.includes('OR') && (
+                       <div className="px-2 mb-4 text-xs font-medium text-yellow-500/90 flex items-center gap-2 bg-yellow-500/10 py-2 rounded-lg border border-yellow-500/20 w-fit">
+                          <AlertCircle size={14} className="shrink-0 ml-2" />
+                          <span className="pr-3"><strong>Dica de Mineração:</strong> Frases longas limitam muito os resultados no Facebook. Prefira termos curtos separados por <strong>OR</strong>. Exemplo: <strong>gordura OR secar OR barriga</strong></span>
+                       </div>
+                    )}
                   </div>
               )}
 
-              {/* Loader de Progresso */}
               {isMining && (
                   <div className="mb-6 p-5 bg-slate-900/80 border border-green-500/20 rounded-xl shadow-lg">
                       <div className="flex justify-between items-center text-sm mb-3 font-bold">
@@ -671,7 +687,6 @@ export default function App() {
                  </div>
               )}
 
-              {/* Barra de Filtros */}
               {(ads.length > 0 || activeTab === 'vault') && !isMining && (
                   <div className="mb-8 flex flex-wrap items-center gap-4 bg-slate-900/50 p-4 rounded-xl border border-slate-800/50">
                       <div className="flex items-center gap-2 text-slate-400 text-sm font-bold mr-2">
@@ -690,7 +705,6 @@ export default function App() {
                               <option value="Imagem">Apenas Imagens</option>
                           </select>
                       </div>
-                      {/* NOVO FILTRO DE FUNIL (QUIZ VS VSL VS WHATSAPP) */}
                       <div className="flex items-center gap-3 bg-slate-950 px-4 py-2 rounded-lg border border-slate-800">
                           <span className="text-xs text-slate-500 font-bold uppercase">Funil:</span>
                           <select value={funnelFilter} onChange={(e) => setFunnelFilter(e.target.value)} className="bg-transparent text-sm font-bold text-white outline-none cursor-pointer">
@@ -715,7 +729,6 @@ export default function App() {
                   </div>
               )}
 
-              {/* Tratamento Cofre Vazio e Erros */}
               {activeTab === 'vault' && savedAds.length === 0 && (
                  <div className="text-center py-20">
                     <Bookmark className="w-20 h-20 text-slate-800 mx-auto mb-4" />
@@ -731,7 +744,6 @@ export default function App() {
                  </div>
               )}
 
-              {}
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                 {adsToRender.map(ad => (
                   <div key={ad.id} onClick={() => setSelectedAd(ad)} className="bg-slate-900 rounded-3xl border border-slate-800 overflow-hidden hover:border-green-500/50 hover:shadow-green-900/20 hover:shadow-2xl transition-all cursor-pointer flex flex-col group relative">
@@ -784,14 +796,14 @@ export default function App() {
 
                       <div className="flex flex-wrap gap-2 mb-3">
                           <FusionBadge text={ad.niche} />
-                          {/* ETIQUETAS DE FUNIL */}
                           {ad.funnelType === "Quiz" && <FusionBadge icon={Target} text="Quiz Funnel" variant="purple" />}
                           {ad.funnelType === "VSL" && <FusionBadge icon={Video} text="VSL Direta" variant="warning" />}
                           {ad.funnelType === "WhatsApp" && <FusionBadge icon={MessageCircle} text="Funil X1 (WhatsApp)" variant="success" />}
-                          
                           {ad.isViral && <FusionBadge icon={Flame} text="Alta Tração" variant="warning" className="animate-pulse shadow-[0_0_10px_rgba(234,179,8,0.5)] border-yellow-500/50" />}
                           <FusionBadge icon={StatusToIcon(ad.score || 0)} text={ad.status || "Teste"} variant={StatusToVariant(ad.score || 0)} />
                           {ad.isAggressiveScale && <FusionBadge icon={Rocket} text="Acelerador" variant="danger" />}
+                          {ad.isABTesting && <FusionBadge icon={SplitSquareHorizontal} text="A/B Testing" variant="brand" />}
+                          {ad.isCreativeKing && <FusionBadge icon={Trophy} text="Criativo Rei" variant="gold" />}
                           {ad.isBlackHat && <FusionBadge icon={ShieldAlert} text="Agressivo" variant="danger" />}
                       </div>
 
@@ -836,7 +848,6 @@ export default function App() {
 
       </main>
 
-      {}
       {selectedAd && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-sm" onClick={() => setSelectedAd(null)}>
           <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
@@ -855,6 +866,7 @@ export default function App() {
                          {selectedAd.funnelType === "VSL" && <FusionBadge icon={Video} text="VSL Direta" variant="warning" />}
                          {selectedAd.funnelType === "WhatsApp" && <FusionBadge icon={MessageCircle} text="Funil X1 (WhatsApp)" variant="success" />}
                          {selectedAd.isAggressiveScale && <FusionBadge icon={Rocket} text="Acelerador" variant="danger" />}
+                         {selectedAd.isABTesting && <FusionBadge icon={SplitSquareHorizontal} text="A/B Testing" variant="brand" />}
                          {selectedAd.isCreativeKing && <FusionBadge icon={Trophy} text="Criativo Rei" variant="gold" />}
                       </div>
                   </div>
@@ -977,9 +989,8 @@ export default function App() {
                        <a href={selectedAd.targetUrl} target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-2 bg-rose-600 hover:bg-rose-500 text-white py-3.5 rounded-xl transition-colors font-bold text-sm shadow-lg shadow-rose-900/20">
                            <ShieldAlert size={18} /> Vendas (Risco BlackHat)
                        </a>
-                       {/* BOTÃO BURLAR CLOAKER AQUI */}
                        <button onClick={() => handleBypassCloaker(selectedAd.targetUrl)} className="flex-1 flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-500 text-white py-3.5 rounded-xl transition-colors font-bold text-sm shadow-lg shadow-purple-900/20">
-                           <Ghost size={18} /> Burlar Cloaker
+                           <Ghost size={18} /> Burlar Cloaker (Pesquisa)
                        </button>
                    </>
                ) : (
