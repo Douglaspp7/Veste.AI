@@ -6,7 +6,7 @@ import {
   AlertCircle, Code, ExternalLink, Calendar, ThumbsUp, Layers, Sparkles, Bot,
   Heart, Filter, Video, Bookmark, DollarSign, Clock, CheckCircle, Flame, Library, 
   ArrowUpDown, ShieldAlert, SplitSquareHorizontal, Rocket, Trophy, Copy, Download,
-  Ghost, Database
+  Ghost, Database, MessageCircle
 } from 'lucide-react';
 
 // ============================================================================
@@ -394,17 +394,10 @@ export default function App() {
                 targetUrl = linksInCopy.find(l => !l.includes('wa.me') && !l.includes('facebook')) || linksInCopy[0];
             }
             
-            // LÓGICA DE DETECÇÃO DE FUNIL (QUIZ VS VSL)
-            let funnelType = "Direto";
-            const analysisText = `${copyLower} ${targetUrl.toLowerCase()} ${title.toLowerCase()}`;
-            if (analysisText.match(/(vturb|sl\.app|vimeo|wistia|panda|vídeo|assista|play|assistir)/)) {
-                funnelType = "VSL";
-            }
-            if (analysisText.match(/(quiz|typeform|questionario|questionário|teste|pesquisa|responda|descubra|pergunta|trivia|outgrow)/)) {
-                funnelType = "Quiz";
-            }
-
-            const libraryUrl = pageId ? `https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=ALL&view_all_page_id=${pageId}` : (coreItem.ad_url || rootItem.ad_url || "");
+            // CORREÇÃO: URL da Biblioteca formatada com os parâmetros exigidos pelo novo layout do Facebook
+            const libraryUrl = pageId 
+                ? `https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=${searchCountry === 'ALL' ? 'ALL' : searchCountry}&view_all_page_id=${pageId}&search_type=page` 
+                : (coreItem.ad_url || rootItem.ad_url || `https://www.facebook.com/ads/library/?id=${adId}`);
 
             let daysActive = 1;
             const startDateRaw = coreItem.start_date || rootItem.start_date || coreItem.creation_time;
@@ -447,7 +440,7 @@ export default function App() {
                 existingAd.allCopies.add(copyText.substring(0, 30).replace(/\s+/g, ' ').trim());
                 
                 // Atualiza o tipo de funil se encontrar algo mais forte nas variações
-                if (funnelType === "Quiz" || (funnelType === "VSL" && existingAd.funnelType === "Direto")) {
+                if (funnelType === "WhatsApp" || funnelType === "Quiz" || (funnelType === "VSL" && existingAd.funnelType === "Direto")) {
                     existingAd.funnelType = funnelType;
                 }
                 
@@ -697,14 +690,14 @@ export default function App() {
                               <option value="Imagem">Apenas Imagens</option>
                           </select>
                       </div>
-
-                      {/* NOVO FILTRO DE FUNIL (QUIZ VS VSL) */}
+                      {/* NOVO FILTRO DE FUNIL (QUIZ VS VSL VS WHATSAPP) */}
                       <div className="flex items-center gap-3 bg-slate-950 px-4 py-2 rounded-lg border border-slate-800">
                           <span className="text-xs text-slate-500 font-bold uppercase">Funil:</span>
                           <select value={funnelFilter} onChange={(e) => setFunnelFilter(e.target.value)} className="bg-transparent text-sm font-bold text-white outline-none cursor-pointer">
                               <option value="ALL">Todos os Funis</option>
                               <option value="Quiz">Apenas Quizzes</option>
                               <option value="VSL">Apenas VSLs</option>
+                              <option value="WhatsApp">Apenas WhatsApp (X1)</option>
                           </select>
                       </div>
 
@@ -791,9 +784,10 @@ export default function App() {
 
                       <div className="flex flex-wrap gap-2 mb-3">
                           <FusionBadge text={ad.niche} />
-                          {/* ETIQUETAS DE FUNIL (QUIZ/VSL) */}
+                          {/* ETIQUETAS DE FUNIL */}
                           {ad.funnelType === "Quiz" && <FusionBadge icon={Target} text="Quiz Funnel" variant="purple" />}
                           {ad.funnelType === "VSL" && <FusionBadge icon={Video} text="VSL Direta" variant="warning" />}
+                          {ad.funnelType === "WhatsApp" && <FusionBadge icon={MessageCircle} text="Funil X1 (WhatsApp)" variant="success" />}
                           
                           {ad.isViral && <FusionBadge icon={Flame} text="Alta Tração" variant="warning" className="animate-pulse shadow-[0_0_10px_rgba(234,179,8,0.5)] border-yellow-500/50" />}
                           <FusionBadge icon={StatusToIcon(ad.score || 0)} text={ad.status || "Teste"} variant={StatusToVariant(ad.score || 0)} />
@@ -859,6 +853,7 @@ export default function App() {
                          <FusionBadge text={selectedAd.status} variant={StatusToVariant(selectedAd.score || 0)} icon={StatusToIcon(selectedAd.score || 0)} />
                          {selectedAd.funnelType === "Quiz" && <FusionBadge icon={Target} text="Quiz Funnel" variant="purple" />}
                          {selectedAd.funnelType === "VSL" && <FusionBadge icon={Video} text="VSL Direta" variant="warning" />}
+                         {selectedAd.funnelType === "WhatsApp" && <FusionBadge icon={MessageCircle} text="Funil X1 (WhatsApp)" variant="success" />}
                          {selectedAd.isAggressiveScale && <FusionBadge icon={Rocket} text="Acelerador" variant="danger" />}
                          {selectedAd.isCreativeKing && <FusionBadge icon={Trophy} text="Criativo Rei" variant="gold" />}
                       </div>
@@ -969,7 +964,11 @@ export default function App() {
             </div>
 
             <div className="p-4 bg-slate-900 border-t border-slate-800 flex flex-col sm:flex-row gap-3">
-               {selectedAd.targetUrl && !selectedAd.isBlackHat ? (
+               {selectedAd.targetUrl && selectedAd.funnelType === "WhatsApp" ? (
+                   <a href={selectedAd.targetUrl} target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white py-3.5 rounded-xl transition-colors font-bold text-sm shadow-lg shadow-emerald-900/20">
+                       <MessageCircle size={18} /> Abrir WhatsApp (Funil X1)
+                   </a>
+               ) : selectedAd.targetUrl && !selectedAd.isBlackHat ? (
                    <a href={selectedAd.targetUrl} target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-2 bg-green-600 hover:bg-green-500 text-white py-3.5 rounded-xl transition-colors font-bold text-sm shadow-lg shadow-green-900/20">
                        <ExternalLink size={18} /> Abrir Página de Vendas
                    </a>
