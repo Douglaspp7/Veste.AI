@@ -77,6 +77,7 @@ export default function App() {
   const [minDaysFilter, setMinDaysFilter] = useState(0);
   const [mediaTypeFilter, setMediaTypeFilter] = useState('ALL');
   const [sortBy, setSortBy] = useState('score');
+  const [funnelFilter, setFunnelFilter] = useState('ALL');
   
   const [searchDepth, setSearchDepth] = useState(500);
   const [searchCountry, setSearchCountry] = useState('BR');
@@ -131,7 +132,7 @@ export default function App() {
 
   useEffect(() => {
     setVisibleAdsCount(24);
-  }, [minDaysFilter, mediaTypeFilter, sortBy, activeTab, miningKeyword]);
+  }, [minDaysFilter, mediaTypeFilter, sortBy, funnelFilter, activeTab, miningKeyword]);
 
   const handleSaveSettings = () => {
     localStorage.setItem('adsniper_apify_token', apifyToken.trim());
@@ -158,19 +159,6 @@ export default function App() {
   const handleScroll = (e) => {
     const bottom = e.target.scrollHeight - e.target.scrollTop <= e.target.clientHeight + 600; 
     if (bottom) setVisibleAdsCount(prev => prev + 24);
-  };
-
-  const applyShortcut = (type) => {
-    let current = miningKeyword.replace(/["']/g, '').trim(); 
-    if (current.includes(' OR ')) current = current.split(' ')[0]; 
-    
-    let newKeyword = "";
-    if (type === 'ebook') newKeyword = current ? `${current} e-book OR ${current} pdf OR ${current} guia` : '"e-book" OR "pdf" OR "guia gratuito" OR "planilha"';
-    else if (type === 'checkout') newKeyword = current ? `${current} pay.kiwify OR ${current} perfectpay OR ${current} hotmart` : 'pay.kiwify OR go.perfectpay OR pay.hotmart OR ticto';
-    else if (type === 'vsl') newKeyword = current ? `${current} vturb OR ${current} assista` : 'vturb OR "assista ao vídeo" OR sl.app';
-    else if (type === 'wpp') newKeyword = current ? `${current} wa.me OR ${current} zap` : 'wa.me OR "grupo vip" OR "chama no zap"';
-    
-    setMiningKeyword(newKeyword);
   };
 
   // FUNCIONALIDADE TIPO SWIPEOFFERS: DOWNLOADS
@@ -411,6 +399,15 @@ export default function App() {
                 targetUrl = linksInCopy.find(l => !l.includes('wa.me') && !l.includes('facebook')) || linksInCopy[0];
             }
             
+            // NOVO: Detecção Heurística de Tipo de Funil (Quiz / VSL)
+            const combinedText = (targetUrl + " " + copyText + " " + title).toLowerCase();
+            let detectedFunnel = "Direto";
+            if (combinedText.includes('quiz') || combinedText.includes('questionario') || combinedText.includes('responda') || combinedText.includes('typeform') || combinedText.includes('descubra')) {
+                detectedFunnel = "Quiz";
+            } else if (combinedText.includes('vturb') || combinedText.includes('sl.app') || combinedText.includes('assista') || combinedText.includes('vsl') || combinedText.includes('play')) {
+                detectedFunnel = "VSL";
+            }
+
             const libraryUrl = pageId ? `https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=ALL&view_all_page_id=${pageId}` : (coreItem.ad_url || rootItem.ad_url || "");
 
             let daysActive = 1;
@@ -462,6 +459,10 @@ export default function App() {
                     existingAd.title = title; existingAd.bestIndividualAdCount = countForThisArchive;
                     if (targetUrl) existingAd.targetUrl = targetUrl;
                     if (ticketPrice !== "Oculto") existingAd.ticketPrice = ticketPrice;
+                    
+                    // Mantém o funil se já detectou Quiz antes (tem maior prioridade)
+                    if (detectedFunnel === "Quiz") existingAd.detectedFunnel = "Quiz";
+                    else if (detectedFunnel === "VSL" && existingAd.detectedFunnel !== "Quiz") existingAd.detectedFunnel = "VSL";
                 }
             } else {
                 const initialArchiveIds = {}; initialArchiveIds[adId] = countForThisArchive;
@@ -469,7 +470,7 @@ export default function App() {
                   id: adId, title: title, advertiser: advertiser, profilePic: profilePic, copy: copyText, targetUrl: targetUrl, libraryUrl: libraryUrl,
                   daysActive: daysActive, ticketPrice: ticketPrice, adCount: countForThisArchive, bestIndividualAdCount: countForThisArchive,
                   archiveIds: initialArchiveIds, allDates: [daysActive], allCopies: new Set([copyText.substring(0, 30).replace(/\s+/g, ' ').trim()]), 
-                  niche: niche, formatType: formatType, platformCount: platformsRaw.length, platform: platformsRaw.join(', '), likesCount: Math.floor(Math.random() * 800) + 100,
+                  niche: niche, detectedFunnel: detectedFunnel, formatType: formatType, platformCount: platformsRaw.length, platform: platformsRaw.join(', '), likesCount: Math.floor(Math.random() * 800) + 100,
                   type: isVideo ? "Vídeo" : "Imagem", isVideo: isVideo, mediaUrl: mediaUrl, videoUrl: videoUrl, color: "from-slate-700 to-slate-900", rawData: safeRawData,
                 });
             }
@@ -515,6 +516,7 @@ export default function App() {
     let filtered = sourceAds.filter(ad => {
         if ((ad.daysActive || 0) < minDaysFilter) return false;
         if (mediaTypeFilter !== 'ALL' && ad.type !== mediaTypeFilter) return false;
+        if (funnelFilter !== 'ALL' && ad.detectedFunnel !== funnelFilter) return false;
         return true;
     });
     return filtered.sort((a, b) => {
@@ -647,20 +649,17 @@ export default function App() {
 
                     <div className="flex flex-wrap items-center gap-2 px-2">
                       <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mr-2 flex items-center gap-1">
-                        <Target size={12}/> Atalhos Especiais:
+                        <Filter size={12}/> Tipo de Funil Detectado:
                       </span>
-                      <button onClick={() => applyShortcut('ebook')} className="bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-500 border border-yellow-500/20 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">
-                        📖 E-books & PDFs
-                      </button>
-                      <button onClick={() => applyShortcut('checkout')} className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 border border-emerald-500/20 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">
-                        $ Apenas Checkouts Diretos
-                      </button>
-                      <button onClick={() => applyShortcut('vsl')} className="bg-fuchsia-500/10 hover:bg-fuchsia-500/20 text-fuchsia-500 border border-fuchsia-500/20 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">
-                        📺 VSLs (Vídeos Longos)
-                      </button>
-                      <button onClick={() => applyShortcut('wpp')} className="bg-green-500/10 hover:bg-green-500/20 text-green-500 border border-green-500/20 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">
-                        💬 Funil de WhatsApp (X1)
-                      </button>
+                      <select 
+                          value={funnelFilter} 
+                          onChange={e => setFunnelFilter(e.target.value)} 
+                          className="bg-slate-900 border border-slate-800 text-white rounded-lg px-4 py-1.5 outline-none cursor-pointer focus:border-green-500 text-xs font-bold transition-colors"
+                      >
+                          <option value="ALL">🎯 Todos os Funis</option>
+                          <option value="Quiz">📝 Apenas Quizzes</option>
+                          <option value="VSL">📺 Apenas VSLs (Vídeos)</option>
+                      </select>
                     </div>
                   </div>
               )}
@@ -777,6 +776,8 @@ export default function App() {
 
                       <div className="flex flex-wrap gap-2 mb-3">
                           <FusionBadge text={ad.niche} />
+                          {ad.detectedFunnel === 'Quiz' && <FusionBadge text="Quiz" variant="brand" />}
+                          {ad.detectedFunnel === 'VSL' && <FusionBadge text="VSL" variant="warning" />}
                           {ad.isViral && <FusionBadge icon={Flame} text="Alta Tração" variant="warning" className="animate-pulse shadow-[0_0_10px_rgba(234,179,8,0.5)] border-yellow-500/50" />}
                           <FusionBadge icon={StatusToIcon(ad.score || 0)} text={ad.status || "Teste"} variant={StatusToVariant(ad.score || 0)} />
                           {ad.isAggressiveScale && <FusionBadge icon={Rocket} text="Acelerador" variant="danger" />}
@@ -841,6 +842,8 @@ export default function App() {
                       <h2 className="font-bold text-xl text-white leading-none mb-2">{selectedAd.advertiser}</h2>
                       <div className="flex flex-wrap gap-2">
                          <FusionBadge text={selectedAd.status} variant={StatusToVariant(selectedAd.score || 0)} icon={StatusToIcon(selectedAd.score || 0)} />
+                         {selectedAd.detectedFunnel === 'Quiz' && <FusionBadge text="Quiz" variant="brand" />}
+                         {selectedAd.detectedFunnel === 'VSL' && <FusionBadge text="VSL" variant="warning" />}
                          {selectedAd.isAggressiveScale && <FusionBadge icon={Rocket} text="Acelerador" variant="danger" />}
                          {selectedAd.isABTesting && <FusionBadge icon={SplitSquareHorizontal} text="A/B Testing" variant="brand" />}
                          {selectedAd.isCreativeKing && <FusionBadge icon={Trophy} text="Criativo Rei" variant="gold" />}
