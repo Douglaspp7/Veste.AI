@@ -89,6 +89,7 @@ export default function App() {
   const [systemLogs, setSystemLogs] = useState([]);
   const [miningProgress, setMiningProgress] = useState(0);
   const [miningStatusMsg, setMiningStatusMsg] = useState('');
+  const [lastSearchStats, setLastSearchStats] = useState(null); // NOVO: Guarda as estatísticas reais
 
   // APIs Tokens
   const [apifyToken, setApifyToken] = useState('');
@@ -275,6 +276,8 @@ export default function App() {
 
   const startMining = async () => {
     setMiningError(''); setSystemLogs([]); setMinDaysFilter(0); setVisibleAdsCount(24);
+    setFunnelFilter('ALL'); // Força a mostrar todos ao iniciar uma nova busca
+    setLastSearchStats(null);
     const token = apifyToken.trim(); const actor = actorId.trim();
     
     if (!token) { setMiningError("Configure o Token da Apify nas Configurações."); return; }
@@ -345,8 +348,7 @@ export default function App() {
           else if (!rawAd.type || rawAd.page_id || rawAd.id || rawAd.node || rawAd.ad) adsToProcess.push(rawAd);
       });
       if (adsToProcess.length === 0) adsToProcess = validAds; 
-
-      setMiningProgress(95); setMiningStatusMsg('Motor V3: A aplicar Rankeamento por Anunciante...');
+      setMiningProgress(95); setMiningStatusMsg('Motor V3: A aplicar Rankeamento e Desagrupamento...');
 
       const getBaseDomain = (url) => {
           if (!url || url.includes('facebook.com') || url.includes('fb.me') || url.includes('instagram.com')) return 'no-link';
@@ -354,6 +356,7 @@ export default function App() {
       };
 
       const advertiserMap = new Map();
+      const totalRawFound = adsToProcess.length; // Quantidade bruta real extraída
 
       adsToProcess.forEach((rawData, index) => {
         try {
@@ -399,12 +402,12 @@ export default function App() {
                 targetUrl = linksInCopy.find(l => !l.includes('wa.me') && !l.includes('facebook')) || linksInCopy[0];
             }
             
-            // NOVO: Detecção Heurística de Tipo de Funil (Quiz / VSL)
+            // INTELIGÊNCIA MELHORADA: Detecção de Funil (Quiz / VSL)
             const combinedText = (targetUrl + " " + copyText + " " + title).toLowerCase();
             let detectedFunnel = "Direto";
-            if (combinedText.includes('quiz') || combinedText.includes('questionario') || combinedText.includes('responda') || combinedText.includes('typeform') || combinedText.includes('descubra')) {
+            if (/(quiz|questionario|typeform|responda|descubra|teste|perfil|pesquisa\s+rápida)/i.test(combinedText)) {
                 detectedFunnel = "Quiz";
-            } else if (combinedText.includes('vturb') || combinedText.includes('sl.app') || combinedText.includes('assista') || combinedText.includes('vsl') || combinedText.includes('play')) {
+            } else if (/(vturb|sl\.app|panda|vimeo|wistia|assista|vsl|play)/i.test(combinedText)) {
                 detectedFunnel = "VSL";
             }
 
@@ -434,7 +437,10 @@ export default function App() {
 
             let platformsRaw = Array.isArray(rootItem.platforms) ? rootItem.platforms : Array.isArray(coreItem.publisherPlatforms) ? coreItem.publisherPlatforms : Array.isArray(coreItem.platforms) ? coreItem.platforms : ["FACEBOOK"];
 
+            // VOLTOU PARA AGRUPAMENTO POR PÁGINA: Agrupar todos os anúncios do mesmo anunciante
+            // para somar a força (AdCount) e detectar as verdadeiras joias de escala, limpando a tela.
             const signature = pageId ? `page_${pageId}` : `adv_${advertiser.trim().toLowerCase()}`;
+            
             let safeRawData = "";
             try { safeRawData = JSON.stringify(rawData, null, 2); } catch(e) { safeRawData = "Omitido por segurança."; }
 
@@ -502,7 +508,8 @@ export default function App() {
       });
 
       setAds(formattedAds.sort((a, b) => (b.score || 0) - (a.score || 0)));
-      setMiningProgress(100); setMiningStatusMsg('Radar Concluído com Sucesso!');
+      setLastSearchStats({ raw: totalRawFound, unique: formattedAds.length });
+      setMiningProgress(100); setMiningStatusMsg(`Foram lidos ${totalRawFound} anúncios na Biblioteca!`);
     } catch (error) {
       let displayError = error instanceof Error ? error.message : "Ocorreu um erro desconhecido.";
       setMiningError(displayError); addLog(`ERRO: ${displayError}`, 'error');
@@ -681,11 +688,14 @@ export default function App() {
                       <div className="flex items-center gap-2 text-slate-400 text-sm font-bold mr-2">
                           <Filter className="w-4 h-4"/> Filtros:
                       </div>
-                      <div className="flex items-center gap-3 bg-slate-950 px-4 py-2 rounded-lg border border-slate-800">
-                          <span className="text-xs text-slate-500 font-bold uppercase">Tempo no Ar:</span>
-                          <input type="range" min="0" max={calcMaxDays} step="1" value={minDaysFilter} onChange={(e) => setMinDaysFilter(Number(e.target.value))} className="w-32 accent-green-500 cursor-pointer" />
-                          <span className="text-sm font-bold text-green-400 w-16 text-right">+{minDaysFilter} dias</span>
-                      </div>
+                      
+                      {/* NOVO: Display das estatísticas reais */}
+                      {lastSearchStats && activeTab === 'dashboard' && (
+                         <div className="flex items-center gap-2 bg-emerald-500/10 text-emerald-400 px-3 py-2 rounded-lg border border-emerald-500/20 text-xs font-bold mr-2">
+                             <Database size={14}/> {lastSearchStats.raw} Anúncios Extraídos ➔ {lastSearchStats.unique} Criativos Únicos
+                         </div>
+                      )}
+
                       <div className="flex items-center gap-3 bg-slate-950 px-4 py-2 rounded-lg border border-slate-800">
                           <span className="text-xs text-slate-500 font-bold uppercase">Formato:</span>
                           <select value={mediaTypeFilter} onChange={(e) => setMediaTypeFilter(e.target.value)} className="bg-transparent text-sm font-bold text-white outline-none cursor-pointer">
