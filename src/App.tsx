@@ -1,11 +1,11 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
 import {
-  Settings, Zap, Target, Crosshair, Loader2, Lock, ArrowRight, 
-  LayoutDashboard, PlayCircle, Image as ImageIcon, BarChart2, X, Terminal, 
+  Settings, Zap, Target, Crosshair, Loader2, Lock, ArrowRight,
+  LayoutDashboard, PlayCircle, Image as ImageIcon, BarChart2, X, Terminal,
   AlertCircle, Code, ExternalLink, Calendar, ThumbsUp, Layers, Sparkles, Bot,
-  Heart, Filter, Video, Bookmark, DollarSign, Clock, CheckCircle, Flame, Library, 
-  ArrowUpDown, ShieldAlert, SplitSquareHorizontal, Rocket, Trophy, Copy, Download,
+  Heart, Filter, Video, Bookmark, DollarSign, Clock, CheckCircle, Flame, Library,
+  ArrowUpDown, ShieldAlert, SplitSquareHorizontal, Rocket, Trophy, Gem, Copy, Download,
   Ghost, Database, MessageCircle, Network, Link2, Search
 } from 'lucide-react';
 
@@ -316,65 +316,93 @@ export default function App() {
 
     const safeActorId = actor.replace('/', '~');
     const queries = miningKeyword.split(' OR ').map(q => q.trim()).filter(q => q);
-    
-    try {
-      let payload = { searchQueries: queries, countries: searchCountry, activeStatus: "ACTIVE", adType: "ALL", maxResultsPerQuery: searchDepth };
+    const LATAM_COUNTRIES = ['MX', 'CO', 'AR', 'CL', 'PE'];
+    const targetCountries = searchCountry === 'LATAM' ? LATAM_COUNTRIES : [searchCountry];
 
+    const buildPayload = (country) => {
+      const countryCode = country === 'ALL' ? 'ALL' : country;
+      const depthPerCountry = Math.ceil(searchDepth / targetCountries.length);
       if (safeActorId.includes('3853UUZQG6pjjdw11') || safeActorId.includes('memo23')) {
-          payload = { startUrls: queries.map(q => ({ url: `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=${searchCountry === 'ALL' ? 'ALL' : searchCountry}&q=${encodeURIComponent(q)}` })), proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ["RESIDENTIAL"] }, maxItems: searchDepth * queries.length };
+        return { startUrls: queries.map(q => ({ url: `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=${countryCode}&q=${encodeURIComponent(q)}` })), proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ["RESIDENTIAL"] }, maxItems: depthPerCountry * queries.length };
       } else if (!safeActorId.includes('dz_omar')) {
-          payload = { startUrls: queries.map(q => ({ url: `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=${searchCountry === 'ALL' ? 'ALL' : searchCountry}&q=${encodeURIComponent(q)}` })), resultsLimit: searchDepth * queries.length };
+        return { startUrls: queries.map(q => ({ url: `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=${countryCode}&q=${encodeURIComponent(q)}` })), resultsLimit: depthPerCountry * queries.length };
       }
+      return { searchQueries: queries, countries: countryCode, activeStatus: "ACTIVE", adType: "ALL", maxResultsPerQuery: depthPerCountry };
+    };
 
-      setMiningProgress(20); setMiningStatusMsg('A iniciar missão de espionagem no Meta...');
-      
-      const runResponse = await fetch(`https://api.apify.com/v2/acts/${safeActorId}/runs?token=${token}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
-      });
+    try {
+      setMiningProgress(20);
+      setMiningStatusMsg(searchCountry === 'LATAM'
+        ? `A iniciar espionagem em ${LATAM_COUNTRIES.length} países LATAM em paralelo...`
+        : 'A iniciar missão de espionagem no Meta...');
 
-      if (!runResponse.ok) {
-         const err = await runResponse.json().catch(() => ({}));
-         throw new Error(`Erro ${runResponse.status}: ${err.error?.message || "Acesso negado."}`);
-      }
-      
-      const runData = await runResponse.json();
-      const runId = runData.data.id;
-      
-      setMiningProgress(30); setMiningStatusMsg(`A extrair anúncios em massa da Biblioteca...`);
+      const startedRuns = (await Promise.all(
+        targetCountries.map(async (country) => {
+          try {
+            const res = await fetch(`https://api.apify.com/v2/acts/${safeActorId}/runs?token=${token}`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(buildPayload(country))
+            });
+            if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(`Erro ${res.status}: ${e.error?.message || 'Acesso negado.'}`); }
+            const d = await res.json();
+            return { runId: d.data.id, datasetId: d.data.defaultDatasetId, country, finished: false, failed: false };
+          } catch(e) { addLog(`Falhou ao iniciar run para ${country}: ${e.message}`, 'error'); return null; }
+        })
+      )).filter(Boolean);
 
-      let finished = false; let timeoutCounter = 0; 
+      if (startedRuns.length === 0) throw new Error("Nenhuma run Apify iniciada com sucesso. Verifique o token e o actor ID.");
 
-      while (!finished && timeoutCounter < 60) {
+      setMiningProgress(30); setMiningStatusMsg(`A extrair anúncios de ${startedRuns.length} mercado(s)...`);
+
+      let allDone = false; let timeoutCounter = 0;
+      while (!allDone && timeoutCounter < 90) {
         await new Promise(r => setTimeout(r, 4000));
         timeoutCounter++;
-        setMiningProgress(prev => Math.min(prev + Math.floor(Math.random() * 5) + 1, 85));
-        
-        const statusRes = await fetch(`https://api.apify.com/v2/acts/${safeActorId}/runs/${runId}?token=${token}`);
-        if (!statusRes.ok) continue; 
-        const statusData = await statusRes.json();
-        if (statusData.data.status === 'SUCCEEDED') finished = true; 
-        else if (['FAILED', 'ABORTED'].includes(statusData.data.status)) throw new Error(`O Robô falhou no servidor: ${statusData.data.statusMessage || 'Erro desconhecido na Apify.'}`);
+        setMiningProgress(prev => Math.min(prev + Math.floor(Math.random() * 3) + 1, 85));
+
+        await Promise.all(startedRuns.map(async (run) => {
+          if (run.finished) return;
+          try {
+            const statusRes = await fetch(`https://api.apify.com/v2/acts/${safeActorId}/runs/${run.runId}?token=${token}`);
+            if (!statusRes.ok) return;
+            const statusData = await statusRes.json();
+            if (statusData.data.status === 'SUCCEEDED') run.finished = true;
+            else if (['FAILED', 'ABORTED'].includes(statusData.data.status)) { run.finished = true; run.failed = true; addLog(`Run ${run.country} falhou.`, 'error'); }
+          } catch(e) {}
+        }));
+
+        const finishedCount = startedRuns.filter(r => r.finished).length;
+        if (searchCountry === 'LATAM') setMiningStatusMsg(`Monitorando ${startedRuns.length} mercados LATAM (${finishedCount}/${startedRuns.length} prontos)...`);
+        allDone = startedRuns.every(r => r.finished);
       }
 
-      setMiningProgress(90); setMiningStatusMsg('A transferir os dados pesados...');
-      const datasetRes = await fetch(`https://api.apify.com/v2/datasets/${runData.data.defaultDatasetId}/items?token=${token}`);
-      const rawAds = await datasetRes.json();
-      
-      if (!Array.isArray(rawAds) || rawAds.length === 0) {
-        setMiningError("Mineração concluída, mas 0 anúncios ativos encontrados.");
-        setIsMining(false); setMiningProgress(0); return;
-      }
-      if (rawAds[0]?.error) throw new Error(`A Apify falhou ao ler a página: ${rawAds[0].errorDescription || ""}`);
+      const successRuns = startedRuns.filter(r => !r.failed);
+      if (successRuns.length === 0) throw new Error("Todas as runs Apify falharam ou expiraram.");
 
-      const validAds = rawAds.filter(rawAd => rawAd && !rawAd.error && rawAd.type !== 'summary' && rawAd.type !== 'query_complete' && rawAd.type !== 'complete' && rawAd.type !== 'log');
+      setMiningProgress(90); setMiningStatusMsg('A transferir os dados de todos os mercados...');
+      const allRawItems = (await Promise.all(
+        successRuns.map(async (run) => {
+          try {
+            const res = await fetch(`https://api.apify.com/v2/datasets/${run.datasetId}/items?token=${token}`);
+            const data = await res.json();
+            return Array.isArray(data) ? data.map(item => ({ ...item, _sourceCountry: run.country })) : [];
+          } catch(e) { return []; }
+        })
+      )).flat();
+
+      if (allRawItems.length === 0) { setMiningError("Mineração concluída, mas 0 anúncios ativos encontrados."); setIsMining(false); setMiningProgress(0); return; }
+
+      const validAds = allRawItems.filter(rawAd => rawAd && !rawAd.error && rawAd.type !== 'summary' && rawAd.type !== 'query_complete' && rawAd.type !== 'complete' && rawAd.type !== 'log');
       if (validAds.length === 0) throw new Error("Apenas logs/erros retornados ou a pesquisa não encontrou resultados.");
 
       let adsToProcess = [];
       validAds.forEach(rawAd => {
-          if (rawAd.type === 'batch' && Array.isArray(rawAd.ads)) adsToProcess = [...adsToProcess, ...rawAd.ads];
-          else if (!rawAd.type || rawAd.page_id || rawAd.id || rawAd.node || rawAd.ad) adsToProcess.push(rawAd);
+          if (rawAd.type === 'batch' && Array.isArray(rawAd.ads)) {
+            rawAd.ads.forEach(a => adsToProcess.push({ ...a, _sourceCountry: rawAd._sourceCountry }));
+          } else if (!rawAd.type || rawAd.page_id || rawAd.id || rawAd.node || rawAd.ad) {
+            adsToProcess.push(rawAd);
+          }
       });
-      if (adsToProcess.length === 0) adsToProcess = validAds; 
+      if (adsToProcess.length === 0) adsToProcess = validAds;
 
       setMiningProgress(95); setMiningStatusMsg('Motor V3: A aplicar Deteção e Rankeamento...');
 
@@ -389,6 +417,7 @@ export default function App() {
         try {
             const coreItem = rawData.node || rawData.ad?.snapshot || rawData.ad || rawData.data || rawData || {};
             const rootItem = rawData || {};
+            const sourceCountry = rawData._sourceCountry || searchCountry;
 
             const adId = String(coreItem.id || coreItem.ad_archive_id || rootItem.id || `fallback_${Date.now()}_${index}`);
             let advertiser = coreItem.pageName || coreItem.page_name || rootItem.page_name || rootItem.pageName || coreItem.publisherPlatform || coreItem.profileName || coreItem.advertiser_name || "Anunciante Oculto";
@@ -408,19 +437,28 @@ export default function App() {
             if (typeof title !== 'string') title = "Oferta Encontrada";
 
             let ticketPrice = "Oculto";
-            const priceMatch = copyText.match(/(?:R\$|R\$\s)\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)/i);
-            if (priceMatch) ticketPrice = `R$ ${priceMatch[1]}`;
+            const brlMatch = copyText.match(/R\$\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)/i);
+            const mxnMatch = copyText.match(/(?:MX\$|MXN)\s*(\d[\d.,]*)/i);
+            const penMatch = copyText.match(/S\/\.?\s*(\d[\d.,]*)/i);
+            const usdMatch = copyText.match(/US\$\s*(\d[\d.,]*)/i);
+            const copMatch = copyText.match(/(?:COP|ARS|CLP)\s*\$?\s*(\d[\d.,]*)/i);
+            if (brlMatch) ticketPrice = `R$ ${brlMatch[1]}`;
+            else if (mxnMatch) ticketPrice = `MX$ ${mxnMatch[1]}`;
+            else if (penMatch) ticketPrice = `S/ ${penMatch[1]}`;
+            else if (usdMatch) ticketPrice = `US$ ${usdMatch[1]}`;
+            else if (copMatch) ticketPrice = copMatch[0].trim();
 
             let countForThisArchive = parseInt(coreItem.collation_count || rootItem.collation_count || coreItem.collationCount, 10);
             if (isNaN(countForThisArchive) || countForThisArchive < 1) countForThisArchive = 1;
 
             let niche = "Geral";
             const copyLower = copyText.toLowerCase();
-            if (copyLower.includes('curso') || copyLower.includes('aula') || copyLower.includes('aprender') || copyLower.includes('método') || copyLower.includes('concurso')) niche = "Educação";
-            else if (copyLower.includes('emagrecer') || copyLower.includes('pele') || copyLower.includes('cabelo') || copyLower.includes('dores') || copyLower.includes('dieta')) niche = "Saúde/Beleza";
-            else if (copyLower.includes('aposta') || copyLower.includes('bet') || copyLower.includes('cassino') || copyLower.includes('slot') || copyLower.includes('tigre')) niche = "iGaming";
-            else if (copyLower.includes('frete') || copyLower.includes('loja') || copyLower.includes('desconto')) niche = "E-commerce";
-            else if (copyLower.includes('jesus') || copyLower.includes('cristã') || copyLower.includes('igreja') || copyLower.includes('deus')) niche = "Religião";
+            if (copyLower.includes('curso') || copyLower.includes('aula') || copyLower.includes('aprender') || copyLower.includes('método') || copyLower.includes('concurso') || copyLower.includes('clases') || copyLower.includes('aprende') || copyLower.includes('certificado') || copyLower.includes('diploma')) niche = "Educação";
+            else if (copyLower.includes('emagrecer') || copyLower.includes('pele') || copyLower.includes('cabelo') || copyLower.includes('dores') || copyLower.includes('dieta') || copyLower.includes('adelgazar') || copyLower.includes('bajar de peso') || copyLower.includes('piel') || copyLower.includes('cabello') || copyLower.includes('dolor')) niche = "Saúde/Beleza";
+            else if (copyLower.includes('aposta') || copyLower.includes('bet') || copyLower.includes('cassino') || copyLower.includes('slot') || copyLower.includes('tigre') || copyLower.includes('apuesta') || copyLower.includes('casino') || copyLower.includes('tragamonedas')) niche = "iGaming";
+            else if (copyLower.includes('frete') || copyLower.includes('loja') || copyLower.includes('desconto') || copyLower.includes('envío') || copyLower.includes('tienda') || copyLower.includes('descuento') || copyLower.includes('gratis')) niche = "E-commerce";
+            else if (copyLower.includes('jesus') || copyLower.includes('cristã') || copyLower.includes('igreja') || copyLower.includes('deus') || copyLower.includes('dios') || copyLower.includes('iglesia') || copyLower.includes('cristiano')) niche = "Religião";
+            else if (copyLower.includes('dinero') || copyLower.includes('ingresos') || copyLower.includes('ganar') || copyLower.includes('inversión') || copyLower.includes('cripto') || copyLower.includes('renda') || copyLower.includes('ganhar') || copyLower.includes('investir') || copyLower.includes('ganha')) niche = "Finanças";
 
             let targetUrl = coreItem.snapshot?.cards?.[0]?.link_url || coreItem.cards?.[0]?.link_url || coreItem.link_url || rootItem.link_url || "";
             if (typeof targetUrl !== 'string') targetUrl = "";
@@ -429,9 +467,9 @@ export default function App() {
                 targetUrl = linksInCopy.find(l => !l.includes('wa.me') && !l.includes('facebook')) || linksInCopy[0];
             }
             
-            // CORREÇÃO: Link robusto usando o search_type=page obrigatório
-            const libraryUrl = pageId 
-                ? `https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=${searchCountry === 'ALL' ? 'ALL' : searchCountry}&view_all_page_id=${pageId}&search_type=page` 
+            const effectiveCountry = sourceCountry === 'ALL' ? 'ALL' : sourceCountry;
+            const libraryUrl = pageId
+                ? `https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=${effectiveCountry}&view_all_page_id=${pageId}&search_type=page`
                 : (coreItem.ad_url || rootItem.ad_url || `https://www.facebook.com/ads/library/?id=${adId}`);
 
             let daysActive = 1;
@@ -490,9 +528,10 @@ export default function App() {
                 advertiserMap.set(signature, {
                   id: adId, title: title, advertiser: advertiser, profilePic: profilePic, copy: copyText, targetUrl: targetUrl, libraryUrl: libraryUrl,
                   daysActive: daysActive, ticketPrice: ticketPrice, adCount: countForThisArchive, bestIndividualAdCount: countForThisArchive,
-                  archiveIds: initialArchiveIds, allDates: [daysActive], allCopies: new Set([copyText.substring(0, 30).replace(/\s+/g, ' ').trim()]), 
+                  archiveIds: initialArchiveIds, allDates: [daysActive], allCopies: new Set([copyText.substring(0, 30).replace(/\s+/g, ' ').trim()]),
                   niche: niche, formatType: formatType, platformCount: platformsRaw.length, platform: platformsRaw.join(', '), likesCount: Math.floor(Math.random() * 800) + 100,
-                  type: isVideo ? "Vídeo" : "Imagem", isVideo: isVideo, mediaUrl: mediaUrl, videoUrl: videoUrl, color: "from-slate-700 to-slate-900", rawData: safeRawData
+                  type: isVideo ? "Vídeo" : "Imagem", isVideo: isVideo, mediaUrl: mediaUrl, videoUrl: videoUrl, color: "from-slate-700 to-slate-900", rawData: safeRawData,
+                  sourceCountry: sourceCountry
                 });
             }
         } catch (itemError) { console.error("Erro num anúncio ignorado:", itemError); }
@@ -508,14 +547,23 @@ export default function App() {
           const velocityScore = (ad.adCount / (ad.daysActive || 1)) * 10;
           ad.isViral = velocityScore >= 3 && ad.daysActive <= 15;
 
-          const adScoreCalc = Math.min((ad.adCount / 30) * 50, 50); 
+          const adScoreCalc = Math.min((ad.adCount / 30) * 50, 50);
           const daysScoreCalc = Math.min((ad.daysActive / 60) * 30, 30);
           const platformScoreCalc = Math.min((ad.platformCount / 4) * 20, 20);
-          
+
           let totalScore = Math.round(adScoreCalc + daysScoreCalc + platformScoreCalc);
           if (ad.isAggressiveScale) totalScore = Math.min(totalScore + 10, 100);
           if (ad.isCreativeKing) totalScore = Math.min(totalScore + 15, 100);
           if (ad.isViral) totalScore = Math.min(totalScore + 20, 100);
+
+          const latamList = ['MX', 'CO', 'AR', 'CL', 'PE'];
+          ad.isLatamJoia = latamList.includes(ad.sourceCountry || '')
+            && !ad.isBlackHat
+            && ad.daysActive >= 10
+            && ad.adCount >= 5
+            && Boolean(ad.targetUrl)
+            && (ad.isCreativeKing || ad.isAggressiveScale || ad.isViral);
+          if (ad.isLatamJoia) totalScore = Math.min(totalScore + 15, 100);
 
           ad.score = totalScore || 0;
           ad.status = StatusToText(totalScore || 0);
@@ -651,8 +699,14 @@ export default function App() {
                       
                       <div className="flex gap-4">
                         <select value={searchCountry} onChange={e => setSearchCountry(e.target.value)} className="bg-slate-950 border border-slate-800 text-slate-300 rounded-xl px-4 outline-none cursor-pointer focus:border-green-500 h-[48px] shrink-0 font-medium">
-                          <option value="BR">🌎 Brasil</option>
-                          <option value="US">🌎 Estados Unidos</option>
+                          <option value="BR">🇧🇷 Brasil</option>
+                          <option value="LATAM">💎 LATAM (ex-BR)</option>
+                          <option value="MX">🇲🇽 México</option>
+                          <option value="CO">🇨🇴 Colombia</option>
+                          <option value="AR">🇦🇷 Argentina</option>
+                          <option value="CL">🇨🇱 Chile</option>
+                          <option value="PE">🇵🇪 Peru</option>
+                          <option value="US">🇺🇸 Estados Unidos</option>
                           <option value="ALL">🌎 Global</option>
                         </select>
                         
@@ -809,6 +863,7 @@ export default function App() {
                           {ad.isABTesting && <FusionBadge icon={SplitSquareHorizontal} text="A/B Testing" variant="brand" />}
                           {ad.isCreativeKing && <FusionBadge icon={Trophy} text="Criativo Rei" variant="gold" />}
                           {ad.isBlackHat && <FusionBadge icon={ShieldAlert} text="Agressivo" variant="danger" />}
+                          {ad.isLatamJoia && <FusionBadge icon={Gem} text="Joia LATAM" variant="purple" />}
                       </div>
 
                       <p className="text-sm text-slate-400 line-clamp-3 leading-relaxed mb-4 flex-1">
@@ -829,7 +884,14 @@ export default function App() {
                       </div>
 
                       <div className="flex items-center justify-between text-xs text-slate-500 font-medium pt-2 border-t border-slate-800/50">
-                          <div className="flex items-center gap-1.5"><Clock size={12}/> há poucos segundos</div>
+                          <div className="flex items-center gap-2">
+                            <Clock size={12}/>
+                            {ad.sourceCountry && ad.sourceCountry !== 'ALL' && (
+                              <span className="font-bold text-slate-600">
+                                {{MX:'🇲🇽',CO:'🇨🇴',AR:'🇦🇷',CL:'🇨🇱',PE:'🇵🇪',BR:'🇧🇷',US:'🇺🇸'}[ad.sourceCountry] || ''} {ad.sourceCountry}
+                              </span>
+                            )}
+                          </div>
                           {ad.libraryUrl && (
                               <button onClick={(e) => { e.stopPropagation(); window.open(ad.libraryUrl, '_blank'); }} className="hover:text-white flex items-center gap-1 bg-slate-800/50 px-2 py-1 rounded">
                                   <Library size={12}/> <span className="hidden sm:inline">Biblioteca</span>
@@ -869,6 +931,7 @@ export default function App() {
                          {selectedAd.isAggressiveScale && <FusionBadge icon={Rocket} text="Acelerador" variant="danger" />}
                          {selectedAd.isABTesting && <FusionBadge icon={SplitSquareHorizontal} text="A/B Testing" variant="brand" />}
                          {selectedAd.isCreativeKing && <FusionBadge icon={Trophy} text="Criativo Rei" variant="gold" />}
+                         {selectedAd.isLatamJoia && <FusionBadge icon={Gem} text="Joia LATAM" variant="purple" />}
                       </div>
                   </div>
               </div>
