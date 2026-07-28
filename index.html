@@ -15,17 +15,16 @@ html,body{height:100%;overflow:hidden;background:#0f0f0f;color:#fff;font-family:
 video,canvas{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover}
 canvas{z-index:2}
 #s{position:absolute;top:1rem;left:50%;transform:translateX(-50%);z-index:10;background:rgba(0,0,0,0.7);padding:0.4rem 1.2rem;border-radius:2rem;font-size:0.85rem;white-space:nowrap}
-#c{position:absolute;bottom:2rem;left:50%;transform:translateX(-50%);z-index:10;text-align:center;width:90%;max-width:360px}
-#c h1{font-size:1.1rem;margin-bottom:0.5rem}
-#picker{display:none;flex-wrap:wrap;justify-content:center;gap:0.5rem;margin-bottom:0.5rem}
-.g{width:48px;height:48px;border-radius:0.7rem;border:2px solid transparent;cursor:pointer;overflow:hidden}
-.g.active{border-color:#fff;box-shadow:0 0 12px rgba(139,92,246,0.6)}
-.g canvas{display:block}
-#actions{display:flex;gap:0.5rem;justify-content:center;flex-wrap:wrap}
-button{padding:0.6rem 1.2rem;border-radius:2rem;border:none;font-size:0.95rem;font-weight:600;cursor:pointer;transition:transform 0.1s}
+#c{position:absolute;bottom:env(safe-area-inset-bottom,1rem);left:50%;transform:translateX(-50%);z-index:10;text-align:center;width:94%;max-width:380px;background:rgba(15,15,15,0.85);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);padding:0.8rem 1rem;border-radius:1.2rem}
+#c h1{font-size:1rem;margin:0 0 0.4rem 0;opacity:0.9}
+#picker{display:none;flex-wrap:wrap;justify-content:center;gap:0.4rem;margin-bottom:0.5rem}
+.g{width:40px;height:40px;border-radius:0.6rem;border:2px solid transparent;cursor:pointer;overflow:hidden;transition:0.15s}
+.g.active{border-color:#8b5cf6;box-shadow:0 0 12px rgba(139,92,246,0.5)}
+#actions{display:flex;gap:0.4rem;justify-content:center}
+button{padding:0.5rem 1rem;border-radius:1.5rem;border:none;font-size:0.85rem;font-weight:600;cursor:pointer;transition:transform 0.1s;color:#fff}
 button:active{transform:scale(0.95)}
-#go{background:#8b5cf6;color:#fff}
-#flip{display:none;background:rgba(255,255,255,0.12);color:#fff}
+#go{background:#8b5cf6}
+#flip{display:none;background:rgba(255,255,255,0.1)}
 </style>
 
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.21.0/dist/tf.min.js"></script>
@@ -170,26 +169,31 @@ button:active{transform:scale(0.95)}
     var sR=kp.find(function(k){return k.name==='right_shoulder'});
     var hL=kp.find(function(k){return k.name==='left_hip'});
     var hR=kp.find(function(k){return k.name==='right_hip'});
-    if(!sL||!sR||!hL||!hR||sL.score<0.25||sR.score<0.25)return;
 
-    // Centro do torso
+    if(!sL||!sR||sL.score<0.25||sR.score<0.25)return;
+
+    // Se quadril não detectado (selfie), estima pela distância dos ombros
+    if(!hL||!hR||hL.score<0.1||hR.score<0.1){
+      var shoulderW=Math.abs(sR.x-sL.x);
+      var estHipY=(sL.y+sR.y)/2+shoulderW*1.0;
+      hL={x:sL.x-shoulderW*0.05,y:estHipY,score:0.5};
+      hR={x:sR.x+shoulderW*0.05,y:estHipY,score:0.5};
+    }
+
     var cx=(sL.x+sR.x+hL.x+hR.x)/4;
     var cyTop=(sL.y+sR.y)/2;
     var cyBot=(hL.y+hR.y)/2;
 
-    // Largura do torso nos ombros e no quadril
     var topW=Math.abs(sR.x-sL.x);
     var botW=Math.abs(hR.x-hL.x);
-
-    // Ângulo dos ombros
     var angle=Math.atan2(sR.y-sL.y,sR.x-sL.x);
-
     var torsoH=cyBot-cyTop;
-    if(torsoH<10||topW<10)return;
 
-    // Expande um pouco pra cobrir bem
-    var marginX=topW*0.15;
-    var marginY=torsoH*0.10;
+    // Validação: torso precisa ter tamanho mínimo
+    if(torsoH<30||topW<50){return;}
+
+    var marginX=topW*0.18;
+    var marginY=Math.max(20,torsoH*0.08);
 
     ctx.save();
     ctx.translate(cx,cyTop-marginY);
@@ -199,14 +203,12 @@ button:active{transform:scale(0.95)}
     var h=torsoH+marginY*2;
 
     if(activeGarment){
-      // Desenha a roupa distorcida pra acompanhar o corpo
       ctx.drawImage(activeGarment.canvas, -w/2, 0, w, h);
     }else{
-      // Placeholder: gradiente
       var grad=ctx.createLinearGradient(0,0,0,h);
-      grad.addColorStop(0,'rgba(139,92,246,0.25)');
-      grad.addColorStop(0.5,'rgba(139,92,246,0.35)');
-      grad.addColorStop(1,'rgba(139,92,246,0.15)');
+      grad.addColorStop(0,'rgba(139,92,246,0.20)');
+      grad.addColorStop(0.5,'rgba(139,92,246,0.30)');
+      grad.addColorStop(1,'rgba(139,92,246,0.10)');
       ctx.fillStyle=grad;
       ctx.fillRect(-w/2,0,w,h);
     }
