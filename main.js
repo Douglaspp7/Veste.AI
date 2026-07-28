@@ -1,8 +1,9 @@
 /**
  * Veste.AI — Provador Virtual
- * Body tracking com TensorFlow.js MoveNet (Google).
- * Mais leve e confiável que MediaPipe em mobile.
+ * Body tracking: TensorFlow.js MoveNet (carregado via script tags)
  */
+
+/* globals tf, poseDetection */
 
 let detector = null;
 let currentFacing = 'user';
@@ -18,30 +19,44 @@ const statusEl = document.getElementById('status');
 
 function status(msg) { if (statusEl) statusEl.textContent = msg; }
 
-// ── TensorFlow.js + MoveNet ─────────────────────────────────────────
+// ── Inicializa detector assim que TF.js estiver pronto ──────────────
 async function initDetector() {
   status('Carregando IA...');
 
+  const check = () => {
+    if (window.tf && window.poseDetection) {
+      setupDetector();
+    } else {
+      setTimeout(check, 200);
+    }
+  };
+
+  if (window.tf && window.poseDetection) {
+    await setupDetector();
+  } else {
+    setTimeout(check, 200);
+  }
+}
+
+async function setupDetector() {
   try {
-    // Carrega TF.js e modelo via CDNs oficiais
-    const [tf, poseDetection] = await Promise.all([
-      import('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.21.0/dist/tf.min.js'),
-      import('https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.3/dist/pose-detection.min.js'),
-    ]);
+    await tf.ready();
+    await tf.setBackend('webgl');
+    console.log('TF backend:', tf.getBackend());
 
-    await tf.default.ready();
-    await tf.default.setBackend('webgl');
-
-    detector = await poseDetection.default.createDetector(
-      poseDetection.default.SupportedModels.MoveNet,
-      { modelType: poseDetection.default.movenet.modelType.SINGLEPOSE_LIGHTNING }
+    detector = await poseDetection.createDetector(
+      poseDetection.SupportedModels.MoveNet,
+      { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING }
     );
 
     status('Pronto 📸');
     console.log('✅ MoveNet carregado');
+
+    // Auto-abre câmera
+    startCamera('user').catch(() => {});
   } catch (e) {
-    status('IA offline — tente recarregar');
-    console.error('Init error:', e);
+    status('IA offline — recarregue');
+    console.error('Detector error:', e);
   }
 }
 
@@ -69,8 +84,8 @@ async function startCamera(facing) {
     status('Câmera ativa');
     detectLoop();
   } catch (e) {
-    status('Permita a câmera');
-    console.error('Camera:', e);
+    status('Permita a câmera no navegador');
+    console.error('Camera error:', e);
   }
 }
 
@@ -91,7 +106,6 @@ function detectLoop() {
     return;
   }
 
-  // Só detecta a cada 3 frames pra economia de bateria
   let skip = 0;
 
   async function frame() {
@@ -125,7 +139,7 @@ function detectLoop() {
           }
           status('Corpo detectado ✅');
         }
-      } catch { /* frame perdido */ }
+      } catch { /* frame descartado */ }
     }
     animFrame = requestAnimationFrame(frame);
   }
@@ -136,5 +150,5 @@ function detectLoop() {
 startBtn.addEventListener('click', () => startCamera('user'));
 flipBtn.addEventListener('click', flipCamera);
 flipBtn.style.display = 'none';
-
-initDetector().then(() => startCamera('user').catch(() => {}));
+status('Carregando IA...');
+initDetector();
