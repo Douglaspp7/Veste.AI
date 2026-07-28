@@ -18,12 +18,15 @@
   <div id="app">
     <video id="camera" autoplay playsinline></video>
     <canvas id="overlay"></canvas>
+
+    <div id="status-bar">
+      <span id="status">Toque para ativar a câmera</span>
+    </div>
+
     <div id="controls">
       <h1>Veste.AI 👗</h1>
-      <select id="garment">
-        <option value="">Carregando...</option>
-      </select>
       <button id="start">📸 Ativar Câmera</button>
+      <button id="flip">🔄 Virar Câmera</button>
     </div>
   </div>
   <script type="module" src="/main.js"></script>

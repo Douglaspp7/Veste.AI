@@ -1,10 +1,79 @@
 * { margin:0; padding:0; box-sizing:border-box; }
-body { font-family: system-ui, sans-serif; background: #0f0f0f; color: #fff; overflow:hidden; }
-#app { position:relative; width:100vw; height:100vh; display:flex; align-items:center; justify-content:center; }
-video, canvas { position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; }
+html, body { height:100%; overflow:hidden; }
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #0f0f0f;
+  color: #fff;
+}
+
+#app {
+  position:relative;
+  width:100vw;
+  height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+
+video, canvas {
+  position:absolute;
+  top:0; left:0;
+  width:100%; height:100%;
+  object-fit:cover;
+}
 canvas { z-index:2; }
-#controls { position:absolute; bottom:2rem; z-index:10; text-align:center; background:rgba(0,0,0,0.7); padding:1rem 2rem; border-radius:1rem; }
-#controls h1 { font-size:1.2rem; margin-bottom:0.5rem; }
-select, button { padding:0.5rem 1rem; border-radius:0.5rem; border:none; font-size:1rem; margin:0.25rem; }
-button { background:#7c3aed; color:#fff; cursor:pointer; }
-button:disabled { opacity:0.5; }
+
+/* Status bar */
+#status-bar {
+  position:absolute; top:1rem; left:50%; z-index:10;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.65);
+  padding: 0.4rem 1.2rem;
+  border-radius: 2rem;
+  font-size: 0.85rem;
+  pointer-events: none;
+}
+
+/* Controles */
+#controls {
+  position:absolute; bottom:2rem; z-index:10;
+  text-align:center;
+  background: rgba(0,0,0,0.7);
+  backdrop-filter: blur(8px);
+  padding: 1rem 2rem;
+  border-radius: 1.2rem;
+  display:flex;
+  flex-direction:column;
+  gap:0.5rem;
+  align-items:center;
+}
+
+#controls h1 {
+  font-size: 1.2rem;
+  margin-bottom: 0.25rem;
+}
+
+button {
+  padding: 0.6rem 1.4rem;
+  border-radius: 2rem;
+  border: none;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+button:active { transform: scale(0.95); }
+
+#start {
+  background: #7c3aed;
+  color: #fff;
+  font-size: 1.1rem;
+  padding: 0.8rem 2rem;
+}
+
+#flip {
+  display: none;
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+  font-size: 0.95rem;
+}
