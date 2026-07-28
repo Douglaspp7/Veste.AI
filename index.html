@@ -14,12 +14,17 @@ html,body{height:100%;overflow:hidden;background:#0f0f0f;color:#fff;font-family:
 #app{position:relative;width:100vw;height:100vh}
 video,canvas{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover}
 canvas{z-index:2}
-#s{position:absolute;top:1rem;left:50%;transform:translateX(-50%);z-index:10;background:rgba(0,0,0,0.7);padding:0.4rem 1.2rem;border-radius:2rem;font-size:0.85rem}
-#c{position:absolute;bottom:2rem;left:50%;transform:translateX(-50%);z-index:10;background:rgba(0,0,0,0.7);backdrop-filter:blur(8px);padding:1rem 2rem;border-radius:1.2rem;text-align:center}
-#c h1{font-size:1.2rem;margin-bottom:0.5rem}
-button{padding:0.6rem 1.4rem;border-radius:2rem;border:none;font-size:1rem;font-weight:600;cursor:pointer;margin:0.2rem}
+#s{position:absolute;top:1rem;left:50%;transform:translateX(-50%);z-index:10;background:rgba(0,0,0,0.7);padding:0.4rem 1.2rem;border-radius:2rem;font-size:0.85rem;white-space:nowrap}
+#c{position:absolute;bottom:2rem;left:50%;transform:translateX(-50%);z-index:10;text-align:center;width:90%;max-width:360px}
+#c h1{font-size:1.1rem;margin-bottom:0.5rem}
+#picker{display:none;flex-wrap:wrap;justify-content:center;gap:0.5rem;margin-bottom:0.5rem}
+.g{width:48px;height:48px;border-radius:0.7rem;border:2px solid transparent;cursor:pointer;overflow:hidden}
+.g.active{border-color:#fff;box-shadow:0 0 12px rgba(139,92,246,0.6)}
+.g canvas{display:block}
+#actions{display:flex;gap:0.5rem;justify-content:center;flex-wrap:wrap}
+button{padding:0.6rem 1.2rem;border-radius:2rem;border:none;font-size:0.95rem;font-weight:600;cursor:pointer;transition:transform 0.1s}
 button:active{transform:scale(0.95)}
-#go{background:#8b5cf6;color:#fff;font-size:1.1rem;padding:0.8rem 2rem}
+#go{background:#8b5cf6;color:#fff}
 #flip{display:none;background:rgba(255,255,255,0.12);color:#fff}
 </style>
 
@@ -30,26 +35,96 @@ button:active{transform:scale(0.95)}
 <div id="app">
   <video id="v" autoplay playsinline></video>
   <canvas id="cv"></canvas>
-  <div id="s">Carregando IA...</div>
+  <div id="s">Carregando...</div>
   <div id="c">
     <h1>Veste.AI 👗</h1>
-    <button id="go">📸 Ativar Câmera</button>
-    <button id="flip">🔄 Virar</button>
+    <div id="picker"></div>
+    <div id="actions">
+      <button id="go">📸 Ativar Câmera</button>
+      <button id="flip">🔄 Virar</button>
+    </div>
   </div>
 </div>
 
 <script>
 (function(){
-  var detector=null, stream=null, facing='user', frameId=null;
-  var vid=document.getElementById('v');
-  var cv=document.getElementById('cv');
-  var ctx=cv.getContext('2d');
-  var go=document.getElementById('go');
-  var fl=document.getElementById('flip');
-  var st=document.getElementById('s');
+  var detector=null,stream=null,facing='user',frameId=null;
+  var vid=document.getElementById('v'),cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+  var go=document.getElementById('go'),fl=document.getElementById('flip'),st=document.getElementById('s');
+  var picker=document.getElementById('picker');
+
+  // ── Catálogo de roupas (geradas via canvas) ──────────────────────────
+  var garments=[],activeGarment=null;
+
+  function makeGarment(id,name,color1,color2){
+    var g=document.createElement('canvas');
+    g.width=120;g.height=160;
+    var gctx=g.getContext('2d');
+    // Desenha camiseta estilizada
+    gctx.fillStyle=color1;
+    // Corpo da camiseta
+    gctx.beginPath();
+    gctx.moveTo(30,10);gctx.lineTo(90,10); // ombros
+    gctx.lineTo(95,30);gctx.lineTo(50,100); // manga dir
+    gctx.lineTo(5,30); // lateral esq
+    gctx.closePath();
+    // Colarinho
+    gctx.beginPath();
+    gctx.moveTo(45,10);gctx.quadraticCurveTo(60,30,75,10);
+    gctx.fillStyle=color2;
+    gctx.fill();
+    // Corpo principal
+    gctx.beginPath();
+    gctx.moveTo(35,10);gctx.lineTo(85,10);
+    gctx.lineTo(100,40);gctx.lineTo(100,150);
+    gctx.lineTo(20,150);gctx.lineTo(20,40);
+    gctx.closePath();
+    gctx.fillStyle=color1;
+    gctx.fill();
+    // Gola
+    gctx.beginPath();
+    gctx.moveTo(48,12);gctx.quadraticCurveTo(60,35,72,12);
+    gctx.lineTo(48,12);
+    gctx.fillStyle='rgba(0,0,0,0.1)';
+    gctx.fill();
+    // Linha do centro
+    gctx.strokeStyle='rgba(0,0,0,0.05)';
+    gctx.lineWidth=1;
+    gctx.beginPath();
+    gctx.moveTo(60,40);gctx.lineTo(60,150);
+    gctx.stroke();
+    return {id:id,name:name,canvas:g,color:color1};
+  }
+
+  garments=[
+    makeGarment('t1','Camiseta Roxa','#8b5cf6','#c4b5fd'),
+    makeGarment('t2','Blusa Branca','#fafafa','#e5e5e5'),
+    makeGarment('t3','Regata Preta','#1a1a1a','#333'),
+    makeGarment('t4','Camisa Azul','#3b82f6','#93c5fd'),
+    makeGarment('t5','Moletom Cinza','#6b7280','#d1d5db'),
+    makeGarment('t6','Vestido','#ec4899','#f9a8d4')
+  ];
+
+  function buildPicker(){
+    garments.forEach(function(g,i){
+      var d=document.createElement('div');
+      d.className='g';d.title=g.name;
+      var ic=g.canvas.cloneNode(true);
+      ic.style.width='100%';ic.style.height='100%';
+      d.appendChild(ic);
+      d.onclick=function(){
+        document.querySelectorAll('.g').forEach(function(el){el.classList.remove('active');});
+        d.classList.add('active');
+        activeGarment=g;
+        status(g.name+' selecionada');
+      };
+      picker.appendChild(d);
+    });
+  }
 
   function status(m){ if(st)st.textContent=m; }
 
+  // ── Câmera ────────────────────────────────────────────────────────────
   function stopCam(){
     if(stream){stream.getTracks().forEach(function(t){t.stop()});stream=null;}
     if(frameId){cancelAnimationFrame(frameId);frameId=null;}
@@ -57,7 +132,7 @@ button:active{transform:scale(0.95)}
   }
 
   async function startCam(f){
-    stopCam(); facing=f||'user';
+    stopCam();facing=f||'user';
     try{
       stream=await navigator.mediaDevices.getUserMedia({
         video:{facingMode:facing,width:{ideal:640},height:{ideal:480}}
@@ -68,36 +143,78 @@ button:active{transform:scale(0.95)}
       cv.height=vid.videoHeight||480;
       fl.style.display='inline-block';
       go.style.display='none';
+      picker.style.display='flex';
       status('Câmera ativa');
       detectLoop();
-    }catch(e){
-      status('Erro: permita a câmera');
-      console.error(e);
-    }
+    }catch(e){status('Permita a câmera');console.error(e);}
   }
 
+  // ── Detector TF.js ────────────────────────────────────────────────────
   async function initDet(){
     status('Carregando IA...');
-    // Espera TF.js carregar (script tags são síncronos, mas o backend pode atrasar)
     if(!window.tf||!window.poseDetection){setTimeout(initDet,300);return;}
     try{
-      await tf.ready();
-      await tf.setBackend('webgl');
-      console.log('Backend:',tf.getBackend());
+      await tf.ready();await tf.setBackend('webgl');
       detector=await poseDetection.createDetector(
         poseDetection.SupportedModels.MoveNet,
         {modelType:poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING}
       );
       status('Pronto 📸');
-      console.log('✅ MoveNet ok');
-      // Auto-abre câmera
       startCam('user').catch(function(){});
-    }catch(e){
-      status('Erro IA — recarregue');
-      console.error(e);
-    }
+    }catch(e){status('Erro IA — recarregue');console.error(e);}
   }
 
+  // ── Overlay de roupa ──────────────────────────────────────────────────
+  function drawGarmentOnTorso(kp){
+    var sL=kp.find(function(k){return k.name==='left_shoulder'});
+    var sR=kp.find(function(k){return k.name==='right_shoulder'});
+    var hL=kp.find(function(k){return k.name==='left_hip'});
+    var hR=kp.find(function(k){return k.name==='right_hip'});
+    if(!sL||!sR||!hL||!hR||sL.score<0.25||sR.score<0.25)return;
+
+    // Centro do torso
+    var cx=(sL.x+sR.x+hL.x+hR.x)/4;
+    var cyTop=(sL.y+sR.y)/2;
+    var cyBot=(hL.y+hR.y)/2;
+
+    // Largura do torso nos ombros e no quadril
+    var topW=Math.abs(sR.x-sL.x);
+    var botW=Math.abs(hR.x-hL.x);
+
+    // Ângulo dos ombros
+    var angle=Math.atan2(sR.y-sL.y,sR.x-sL.x);
+
+    var torsoH=cyBot-cyTop;
+    if(torsoH<10||topW<10)return;
+
+    // Expande um pouco pra cobrir bem
+    var marginX=topW*0.15;
+    var marginY=torsoH*0.10;
+
+    ctx.save();
+    ctx.translate(cx,cyTop-marginY);
+    ctx.rotate(angle);
+
+    var w=Math.max(topW,botW)+marginX*2;
+    var h=torsoH+marginY*2;
+
+    if(activeGarment){
+      // Desenha a roupa distorcida pra acompanhar o corpo
+      ctx.drawImage(activeGarment.canvas, -w/2, 0, w, h);
+    }else{
+      // Placeholder: gradiente
+      var grad=ctx.createLinearGradient(0,0,0,h);
+      grad.addColorStop(0,'rgba(139,92,246,0.25)');
+      grad.addColorStop(0.5,'rgba(139,92,246,0.35)');
+      grad.addColorStop(1,'rgba(139,92,246,0.15)');
+      ctx.fillStyle=grad;
+      ctx.fillRect(-w/2,0,w,h);
+    }
+
+    ctx.restore();
+  }
+
+  // ── Loop ──────────────────────────────────────────────────────────────
   function detectLoop(){
     if(!stream||!detector){frameId=requestAnimationFrame(detectLoop);return;}
     var skip=0;
@@ -105,40 +222,36 @@ button:active{transform:scale(0.95)}
       if(!stream)return;
       skip=(skip+1)%3;
       if(skip===0&&vid.readyState>=2){
-        try{
-          detector.estimatePoses(vid).then(function(poses){
-            ctx.clearRect(0,0,cv.width,cv.height);
-            if(poses.length>0){
-              var kp=poses[0].keypoints;
-              var sL=kp.find(function(k){return k.name==='left_shoulder'});
-              var sR=kp.find(function(k){return k.name==='right_shoulder'});
-              var hL=kp.find(function(k){return k.name==='left_hip'});
-              var hR=kp.find(function(k){return k.name==='right_hip'});
-              if(sL&&sR&&hL&&hR&&sL.score>0.25&&sR.score>0.25){
-                ctx.strokeStyle='#8b5cf6';
-                ctx.lineWidth=2;
-                ctx.fillStyle='rgba(139,92,246,0.12)';
+        detector.estimatePoses(vid).then(function(poses){
+          ctx.clearRect(0,0,cv.width,cv.height);
+          if(poses.length>0){
+            drawGarmentOnTorso(poses[0].keypoints);
+            // Esqueleto sutil (só ossos visíveis)
+            var idx=poses[0].keypoints;
+            var pairs=[[5,6],[5,7],[6,8],[7,9],[8,10],[5,11],[6,12],[11,12],[11,13],[12,14],[13,15],[14,16],[11,23],[12,24],[23,24],[23,25],[24,26],[25,27],[26,28]];
+            ctx.strokeStyle='rgba(255,255,255,0.12)';ctx.lineWidth=1;
+            pairs.forEach(function(p){
+              if(idx[p[0]]&&idx[p[1]]&&idx[p[0]].score>0.2&&idx[p[1]].score>0.2){
                 ctx.beginPath();
-                ctx.moveTo(sL.x,sL.y);
-                ctx.lineTo(sR.x,sR.y);
-                ctx.lineTo(hR.x,hR.y);
-                ctx.lineTo(hL.x,hL.y);
-                ctx.closePath();
-                ctx.fill();
+                ctx.moveTo(idx[p[0]].x,idx[p[0]].y);
+                ctx.lineTo(idx[p[1]].x,idx[p[1]].y);
                 ctx.stroke();
               }
-              status('Corpo detectado ✅');
-            }
-          }).catch(function(){});
-        }catch(e){}
+            });
+            status(activeGarment?activeGarment.name+' ✅':'Selecione uma roupa abaixo');
+          }
+        }).catch(function(){});
       }
       frameId=requestAnimationFrame(frame);
     })();
   }
 
+  // ── Init ──────────────────────────────────────────────────────────────
   go.addEventListener('click',function(){startCam('user');});
   fl.addEventListener('click',function(){startCam(facing==='user'?'environment':'user');});
   fl.style.display='none';
+  picker.style.display='none';
+  buildPicker();
   initDet();
 })();
 </script>
