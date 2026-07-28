@@ -12,29 +12,43 @@ const startBtn = document.getElementById('start');
 const flipBtn = document.getElementById('flip');
 const statusEl = document.getElementById('status');
 
-// ── Status helper ───────────────────────────────────────────────────
 function status(msg) { if (statusEl) statusEl.textContent = msg; }
 
-// ── Pose Landmarker (carrega em background) ─────────────────────────
+// ── Pose Landmarker (CDN oficial Google + fallback) ────────────────
 async function initPose() {
-  try {
-    status('Carregando IA...');
-    const vision = await FilesetResolver.forVisionTasks(
-      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm'
-    );
-    poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
-      baseOptions: {
-        modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
-        delegate: 'GPU'
-      },
-      runningMode: 'VIDEO',
-      numPoses: 1
-    });
-    status('Pronto 📸');
-  } catch (e) {
-    status('IA offline — tente recarregar');
-    console.error(e);
+  status('Carregando IA...');
+  const wasmFilesets = [
+    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm',
+    'https://unpkg.com/@mediapipe/tasks-vision@0.10.18/wasm',
+    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm',
+  ];
+  const modelFiles = [
+    'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task',
+    'https://cdn.jsdelivr.net/npm/@mediapipe-models/pose_landmarker/pose_landmarker_lite.task',
+  ];
+
+  let vision = null;
+  for (const wasmUrl of wasmFilesets) {
+    try {
+      vision = await FilesetResolver.forVisionTasks(wasmUrl);
+      if (vision) break;
+    } catch { continue; }
   }
+  if (!vision) { status('Erro no carregamento'); return; }
+
+  for (const modelUrl of modelFiles) {
+    try {
+      poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+        baseOptions: { modelAssetPath: modelUrl, delegate: 'GPU' },
+        runningMode: 'VIDEO',
+        numPoses: 1
+      });
+      if (poseLandmarker) break;
+    } catch { continue; }
+  }
+  if (!poseLandmarker) { status('Modelo offline'); return; }
+
+  status('Pronto 📸');
 }
 
 // ── Câmera ──────────────────────────────────────────────────────────
@@ -53,11 +67,6 @@ async function startCamera(facing) {
     video.srcObject = stream;
     await video.play();
 
-    // Ajusta canvas quando o vídeo estiver pronto
-    video.addEventListener('loadedmetadata', () => {
-      canvas.width = video.videoWidth || 640;
-      canvas.height = video.videoHeight || 480;
-    }, { once: true });
     canvas.width = video.videoWidth || 640;
     canvas.height = video.videoHeight || 480;
 
@@ -66,17 +75,13 @@ async function startCamera(facing) {
     status('Câmera ativa');
     requestAnimationFrame(detectLoop);
   } catch (e) {
-    status('Permita a câmera nas configurações');
-    console.error('Camera error:', e);
-    startBtn.style.display = 'inline-block';
+    status('Permita a câmera');
+    console.error(e);
   }
 }
 
 function stopCamera() {
-  if (stream) {
-    stream.getTracks().forEach(t => t.stop());
-    stream = null;
-  }
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
   video.srcObject = null;
 }
 
@@ -84,26 +89,18 @@ async function flipCamera() {
   await startCamera(currentFacing === 'user' ? 'environment' : 'user');
 }
 
-// ── Detecção de corpo ──────────────────────────────────────────────
+// ── Detecção ────────────────────────────────────────────────────────
 function detectLoop() {
-  if (!stream) return; // câmera desligada
+  if (!stream || !poseLandmarker) return;
 
-  if (!poseLandmarker || video.readyState < 2) {
-    requestAnimationFrame(detectLoop);
-    return;
-  }
-
-  if (video.currentTime !== lastVideoTime) {
+  if (video.readyState >= 2 && video.currentTime !== lastVideoTime) {
     lastVideoTime = video.currentTime;
-
     try {
       const result = poseLandmarker.detectForVideo(video, performance.now());
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-
       if (result.landmarks?.length > 0) {
         const lm = result.landmarks[0];
         const sL = lm[11], sR = lm[12], hL = lm[23], hR = lm[24];
-
         if (sL && sR && hL && hR) {
           ctx.strokeStyle = '#7c3aed';
           ctx.lineWidth = 2;
@@ -119,11 +116,8 @@ function detectLoop() {
         }
         status('Corpo detectado ✅');
       }
-    } catch (e) {
-      // frame descartado, ignora
-    }
+    } catch { /* frame descartado */ }
   }
-
   requestAnimationFrame(detectLoop);
 }
 
@@ -132,8 +126,4 @@ startBtn.addEventListener('click', () => startCamera('user'));
 flipBtn.addEventListener('click', flipCamera);
 flipBtn.style.display = 'none';
 
-// Inicia IA e abre câmera automaticamente
-(async () => {
-  await initPose();
-  try { await startCamera('user'); } catch { /* usuário decide quando tocar */ }
-})();
+initPose().then(() => startCamera('user').catch(() => {}));
