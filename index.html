@@ -1,38 +1,146 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Veste.AI — Provador Virtual</title>
-  <link rel="manifest" href="/manifest.json">
-  <meta name="theme-color" content="#8b5cf6">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Veste.AI">
-  <link rel="stylesheet" href="/style.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Veste.AI</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#8b5cf6">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden;background:#0f0f0f;color:#fff;font-family:system-ui,-apple-system,sans-serif}
+#app{position:relative;width:100vw;height:100vh}
+video,canvas{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover}
+canvas{z-index:2}
+#s{position:absolute;top:1rem;left:50%;transform:translateX(-50%);z-index:10;background:rgba(0,0,0,0.7);padding:0.4rem 1.2rem;border-radius:2rem;font-size:0.85rem}
+#c{position:absolute;bottom:2rem;left:50%;transform:translateX(-50%);z-index:10;background:rgba(0,0,0,0.7);backdrop-filter:blur(8px);padding:1rem 2rem;border-radius:1.2rem;text-align:center}
+#c h1{font-size:1.2rem;margin-bottom:0.5rem}
+button{padding:0.6rem 1.4rem;border-radius:2rem;border:none;font-size:1rem;font-weight:600;cursor:pointer;margin:0.2rem}
+button:active{transform:scale(0.95)}
+#go{background:#8b5cf6;color:#fff;font-size:1.1rem;padding:0.8rem 2rem}
+#flip{display:none;background:rgba(255,255,255,0.12);color:#fff}
+</style>
 
-  <!-- TF.js + MoveNet (via CDN global) -->
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.21.0/dist/tf.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.3/dist/pose-detection.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.21.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.3/dist/pose-detection.min.js"></script>
 </head>
 <body>
-  <div id="app">
-    <video id="camera" autoplay playsinline></video>
-    <canvas id="overlay"></canvas>
-
-    <div id="status-bar">
-      <span id="status">Carregando IA...</span>
-    </div>
-
-    <div id="controls">
-      <h1>Veste.AI 👗</h1>
-      <button id="start">📸 Ativar Câmera</button>
-      <button id="flip">🔄 Virar Câmera</button>
-    </div>
+<div id="app">
+  <video id="v" autoplay playsinline></video>
+  <canvas id="cv"></canvas>
+  <div id="s">Carregando IA...</div>
+  <div id="c">
+    <h1>Veste.AI 👗</h1>
+    <button id="go">📸 Ativar Câmera</button>
+    <button id="flip">🔄 Virar</button>
   </div>
-  <script type="module" src="/main.js"></script>
-  <script>
-    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
-  </script>
+</div>
+
+<script>
+(function(){
+  var detector=null, stream=null, facing='user', frameId=null;
+  var vid=document.getElementById('v');
+  var cv=document.getElementById('cv');
+  var ctx=cv.getContext('2d');
+  var go=document.getElementById('go');
+  var fl=document.getElementById('flip');
+  var st=document.getElementById('s');
+
+  function status(m){ if(st)st.textContent=m; }
+
+  function stopCam(){
+    if(stream){stream.getTracks().forEach(function(t){t.stop()});stream=null;}
+    if(frameId){cancelAnimationFrame(frameId);frameId=null;}
+    vid.srcObject=null;
+  }
+
+  async function startCam(f){
+    stopCam(); facing=f||'user';
+    try{
+      stream=await navigator.mediaDevices.getUserMedia({
+        video:{facingMode:facing,width:{ideal:640},height:{ideal:480}}
+      });
+      vid.srcObject=stream;
+      await vid.play();
+      cv.width=vid.videoWidth||640;
+      cv.height=vid.videoHeight||480;
+      fl.style.display='inline-block';
+      go.style.display='none';
+      status('Câmera ativa');
+      detectLoop();
+    }catch(e){
+      status('Erro: permita a câmera');
+      console.error(e);
+    }
+  }
+
+  async function initDet(){
+    status('Carregando IA...');
+    // Espera TF.js carregar (script tags são síncronos, mas o backend pode atrasar)
+    if(!window.tf||!window.poseDetection){setTimeout(initDet,300);return;}
+    try{
+      await tf.ready();
+      await tf.setBackend('webgl');
+      console.log('Backend:',tf.getBackend());
+      detector=await poseDetection.createDetector(
+        poseDetection.SupportedModels.MoveNet,
+        {modelType:poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING}
+      );
+      status('Pronto 📸');
+      console.log('✅ MoveNet ok');
+      // Auto-abre câmera
+      startCam('user').catch(function(){});
+    }catch(e){
+      status('Erro IA — recarregue');
+      console.error(e);
+    }
+  }
+
+  function detectLoop(){
+    if(!stream||!detector){frameId=requestAnimationFrame(detectLoop);return;}
+    var skip=0;
+    (function frame(){
+      if(!stream)return;
+      skip=(skip+1)%3;
+      if(skip===0&&vid.readyState>=2){
+        try{
+          detector.estimatePoses(vid).then(function(poses){
+            ctx.clearRect(0,0,cv.width,cv.height);
+            if(poses.length>0){
+              var kp=poses[0].keypoints;
+              var sL=kp.find(function(k){return k.name==='left_shoulder'});
+              var sR=kp.find(function(k){return k.name==='right_shoulder'});
+              var hL=kp.find(function(k){return k.name==='left_hip'});
+              var hR=kp.find(function(k){return k.name==='right_hip'});
+              if(sL&&sR&&hL&&hR&&sL.score>0.25&&sR.score>0.25){
+                ctx.strokeStyle='#8b5cf6';
+                ctx.lineWidth=2;
+                ctx.fillStyle='rgba(139,92,246,0.12)';
+                ctx.beginPath();
+                ctx.moveTo(sL.x,sL.y);
+                ctx.lineTo(sR.x,sR.y);
+                ctx.lineTo(hR.x,hR.y);
+                ctx.lineTo(hL.x,hL.y);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+              }
+              status('Corpo detectado ✅');
+            }
+          }).catch(function(){});
+        }catch(e){}
+      }
+      frameId=requestAnimationFrame(frame);
+    })();
+  }
+
+  go.addEventListener('click',function(){startCam('user');});
+  fl.addEventListener('click',function(){startCam(facing==='user'?'environment':'user');});
+  fl.style.display='none';
+  initDet();
+})();
+</script>
 </body>
 </html>
